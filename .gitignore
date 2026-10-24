@@ -1,0 +1,46 @@
+# Unity-generated folders: rebuilt from Assets/, Packages/ and ProjectSettings/ on open.
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/[Bb]uild/
+/[Bb]uilds/
+
+# IDE and generated project files.
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.suo
+*.user
+*.pidb
+*.booproj
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# OS clutter.
+.DS_Store
+Thumbs.db
+
+# The StylizedKitchen pack is a whole Unreal Engine project. Unity cannot read its .uasset/.umap
+# files or Unreal's caches and config (see Assets/Editor/KitchenMaterialBuilder.cs), and they are
+# ~960 MB of the repository. Only the FBX meshes, TGA textures and the Unity-made Materials/Shaders
+# are used. Their .meta files go too, so a fresh clone has no orphaned metas.
+Assets/models/env/**/*.uasset
+Assets/models/env/**/*.uasset.meta
+Assets/models/env/**/*.umap
+Assets/models/env/**/*.umap.meta
+Assets/models/env/StylizedKitchen.uproject
+Assets/models/env/StylizedKitchen.uproject.meta
+Assets/models/env/Intermediate/
+Assets/models/env/Intermediate.meta
+Assets/models/env/DerivedDataCache/
+Assets/models/env/DerivedDataCache.meta
+Assets/models/env/Config/
+Assets/models/env/Config.meta

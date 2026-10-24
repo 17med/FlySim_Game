@@ -1,0 +1,73 @@
+name: Release build
+
+# Pushing a version tag (git tag v1.2.0 && git push origin v1.2.0) builds the game for every platform
+# below and publishes the zipped builds as a GitHub Release for that tag.
+# Needs three repository secrets (Settings > Secrets and variables > Actions), never committed:
+#   UNITY_LICENSE  - contents of your Unity license file (.ulf)
+#   UNITY_EMAIL    - your Unity account email
+#   UNITY_PASSWORD - your Unity account password
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # The release starts as a draft so the parallel builds can attach to one existing release instead of
+  # racing to create it, and so a failed build leaves a draft rather than a public release missing a platform.
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --title "$GITHUB_REF_NAME" --generate-notes
+
+  build:
+    needs: draft
+    runs-on: ubuntu-latest
+    strategy:
+      # One platform failing should not cancel the other: its log is still worth having.
+      fail-fast: false
+      matrix:
+        targetPlatform:
+          - StandaloneWindows64
+          - StandaloneLinux64
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Read version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # Unity version is read from ProjectSettings/ProjectVersion.txt. Windows builds from Linux work
+      # because the Standalone scripting backend is Mono; switching it to IL2CPP would need a Windows runner.
+      - uses: game-ci/unity-builder@v6.0.0
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: ${{ matrix.targetPlatform }}
+          buildName: FlySim
+          versioning: Custom
+          version: ${{ steps.version.outputs.version }}
+
+      - name: Zip and attach build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE: FlySim-${{ github.ref_name }}-${{ matrix.targetPlatform }}.zip
+        run: |
+          (cd "build/${{ matrix.targetPlatform }}" && zip -qr "$GITHUB_WORKSPACE/$ARCHIVE" .)
+          gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" --repo "$GITHUB_REPOSITORY"
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
