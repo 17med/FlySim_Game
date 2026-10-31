@@ -11,8 +11,9 @@ using UnityEngine.InputSystem;
 //   hovering - turns toward it left/right only and eases back to level
 //   walking  - on a surface: snaps level the moment it lands, walks flat, turns left/right only;
 //              Space takes off, walking off an edge switches to hovering
-// In the air the fly has momentum: it eases up to speed, glides to a stop when released, and holding
-// Shift (Sprint) boosts its forward speed. Walking has no momentum.
+// In the air the fly has momentum: its speed rises and falls at a steady (linear) rate, it glides to a
+// stop when released, and holding Shift (Sprint) boosts its forward speed. Walking has no momentum.
+// The camera's field of view widens with flight speed, so going fast feels fast.
 // Put this on an empty parent of the fly model: the model itself carries a 180° X rotation in the
 // scene to stand upright, and rotating it directly would overwrite that correction.
 [RequireComponent(typeof(CharacterController))]
@@ -30,9 +31,9 @@ public class FlyController : MonoBehaviour
     // Turning faster than this (degrees per second) on the ground plays the walk animation, so turning
     // in place shows the legs moving; slower drift from camera smoothing does not count.
     const float TurnInPlaceAnimSpeed = 30f;
-    // A gliding fly slower than this (units per second) stops completely, so hovering is truly still
-    // again: easing alone only approaches zero and would keep making tiny moves forever.
-    const float StopSpeed = 0.01f;
+    // Floor for the top flight speed (units per second), so a zero speed set in the Inspector never
+    // divides by zero.
+    const float MinTopSpeed = 0.01f;
     // Int parameter on the fly's Animator; values match MovementState.
     static readonly int StateAnimParameter = Animator.StringToHash("stateanim");
     // Float parameter on the fly's Animator that multiplies the fly state's playback speed (wing beat rate).
@@ -56,9 +57,9 @@ public class FlyController : MonoBehaviour
     [SerializeField] float turnSpeed = 360f;
     [Tooltip("Forward flying speed is multiplied by this while Shift (Sprint) is held.")]
     [SerializeField] float boostMultiplier = 2f;
-    [Tooltip("Seconds the fly takes to reach a higher speed, including speeding into a boost. 0 = instant.")]
+    [Tooltip("Seconds the fly takes to reach Move Speed from rest. Speeding into a boost continues at the same rate. 0 = instant.")]
     [SerializeField, Range(0f, 1f)] float accelerationTime = 0.25f;
-    [Tooltip("Seconds the fly takes to slow down when released. Longer than acceleration so it glides to a stop.")]
+    [Tooltip("Seconds the fly takes to stop from Move Speed when released. Longer than acceleration so it glides to a stop.")]
     [SerializeField, Range(0f, 1f)] float decelerationTime = 0.4f;
     [Tooltip("How far below its start position the fly looks for ground when Play starts.")]
     [SerializeField] float startGroundCheck = 0.05f;
@@ -69,6 +70,16 @@ public class FlyController : MonoBehaviour
     [Tooltip("Wing beat playback speed at full boost speed; cruising falls in between.")]
     [SerializeField] float boostWingSpeed = 1.5f;
 
+    [Header("Camera")]
+    [Tooltip("The camera whose field of view widens with speed. Taken from Camera Transform if left empty.")]
+    [SerializeField] Camera flyCamera;
+    [Tooltip("Field of view while walking or hovering still. Applied when Play starts.")]
+    [SerializeField, Range(1f, 179f)] float defaultFov = 60f;
+    [Tooltip("Field of view at full boost speed; cruising falls in between.")]
+    [SerializeField, Range(1f, 179f)] float maxSpeedFov = 75f;
+    [Tooltip("Seconds the field of view takes to follow a change in speed. 0 = instant.")]
+    [SerializeField, Range(0f, 1f)] float fovChangeTime = 0.2f;
+
     CharacterController controller;
     InputAction moveAction;
     InputAction upAction;
@@ -76,8 +87,8 @@ public class FlyController : MonoBehaviour
     InputAction freeLookAction;
     InputAction boostAction;
     Vector3 flyVelocity;
-    // SmoothDamp's running state for flyVelocity.
-    Vector3 flyAcceleration;
+    // SmoothDamp's running state for the camera's field of view.
+    float fovVelocity;
     float steerYaw;
     float steerPitch;
     bool isGrounded;
@@ -107,6 +118,12 @@ public class FlyController : MonoBehaviour
             Debug.LogError("FlyController: no camera found. Assign Camera Transform or tag your camera MainCamera.", this);
             enabled = false;
         }
+
+        if (flyCamera == null && cameraTransform != null)
+            flyCamera = cameraTransform.GetComponent<Camera>();
+        // Fails open: the field of view change is cosmetic, so the fly stays controllable without it.
+        if (flyCamera == null)
+            Debug.LogWarning("FlyController: no Camera found on Camera Transform; field of view stays fixed.", this);
     }
 
     // Ground contact is only detected by moving into it, and a hovering fly never moves, so a fly
@@ -117,6 +134,9 @@ public class FlyController : MonoBehaviour
         isGrounded = (controller.collisionFlags & CollisionFlags.Below) != 0;
         if (!isGrounded)
             controller.Move(Vector3.up * startGroundCheck);
+
+        if (flyCamera != null)
+            flyCamera.fieldOfView = defaultFov;
     }
 
     void OnEnable()
@@ -151,14 +171,30 @@ public class FlyController : MonoBehaviour
             animator.SetInteger(StateAnimParameter, (int)State);
             animator.SetFloat(WingSpeedAnimParameter, WingBeatSpeed());
         }
+        UpdateFieldOfView();
+    }
+
+    // 0 while hovering still, 1 at full boost speed. Used for the wing beat and the field of view.
+    float SpeedFraction()
+    {
+        // Max guards a zero top speed from a misconfigured Inspector: 0/0 would hand NaN downstream.
+        float topSpeed = Mathf.Max(moveSpeed * boostMultiplier, MinTopSpeed);
+        return flyVelocity.magnitude / topSpeed;
     }
 
     // Faster flight beats the wings faster, so hovering, cruising and boosting each read differently.
     float WingBeatSpeed()
     {
-        // Max guards a zero top speed from a misconfigured Inspector: 0/0 would hand the Animator NaN.
-        float topSpeed = Mathf.Max(moveSpeed * boostMultiplier, StopSpeed);
-        return Mathf.Lerp(hoverWingSpeed, boostWingSpeed, flyVelocity.magnitude / topSpeed);
+        return Mathf.Lerp(hoverWingSpeed, boostWingSpeed, SpeedFraction());
+    }
+
+    // Widens the view as the fly speeds up. Eased, so starting a boost doesn't snap the view.
+    void UpdateFieldOfView()
+    {
+        if (flyCamera == null)
+            return;
+        float targetFov = Mathf.Lerp(defaultFov, maxSpeedFov, SpeedFraction());
+        flyCamera.fieldOfView = Mathf.SmoothDamp(flyCamera.fieldOfView, targetFov, ref fovVelocity, fovChangeTime);
     }
 
     // Play mode only. In Free mode the last value is kept, which is what holds the fly's heading.
@@ -178,7 +214,6 @@ public class FlyController : MonoBehaviour
         MoveAndDetectGround(velocity);
         // Landing absorbs all flight momentum, so the next take-off starts from rest.
         flyVelocity = Vector3.zero;
-        flyAcceleration = Vector3.zero;
     }
 
     // Z/S fly along the full steering direction (including up/down); Space/Ctrl are straight up/down.
@@ -195,17 +230,19 @@ public class FlyController : MonoBehaviour
         MoveAndDetectGround(flyVelocity);
     }
 
-    // Eases from the current flight velocity toward the target instead of jumping to it, which is what
-    // gives starts, stops and boosts their weight. Slowing down uses the longer time so it reads as a glide.
+    // Changes the flight velocity toward the target at a constant rate, so speed rises and falls in a
+    // straight line like a steady push, which gives starts, stops and boosts their weight. (SmoothDamp
+    // eased in and out instead, and never quite reached zero.) Slowing down uses the longer time so it
+    // reads as a glide.
     Vector3 Accelerate(Vector3 targetVelocity)
     {
         bool isSpeedingUp = targetVelocity.sqrMagnitude >= flyVelocity.sqrMagnitude;
-        float smoothTime = isSpeedingUp ? accelerationTime : decelerationTime;
-        Vector3 velocity = Vector3.SmoothDamp(flyVelocity, targetVelocity, ref flyAcceleration, smoothTime);
-        if (targetVelocity != Vector3.zero || velocity.sqrMagnitude > StopSpeed * StopSpeed)
-            return velocity;
-        flyAcceleration = Vector3.zero;
-        return Vector3.zero;
+        float rampTime = isSpeedingUp ? accelerationTime : decelerationTime;
+        // 0 means instant, as the Inspector tooltips say; it would also divide by zero below.
+        if (rampTime <= 0f)
+            return targetVelocity;
+        float maxSpeedChange = moveSpeed / rampTime * Time.deltaTime;
+        return Vector3.MoveTowards(flyVelocity, targetVelocity, maxSpeedChange);
     }
 
     void MoveAndDetectGround(Vector3 velocity)
