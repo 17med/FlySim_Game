@@ -1245,6 +1245,10 @@ MonoBehaviour:
   startGroundCheck: 0.05
   hoverWingSpeed: 1
   boostWingSpeed: 2
+  flyCamera: {fileID: 1389854407}
+  defaultFov: 60
+  maxSpeedFov: 100.5
+  fovChangeTime: 0.2
 --- !u!143 &76184888
 CharacterController:
   m_ObjectHideFlags: 0
