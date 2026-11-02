@@ -145,7 +145,11 @@ public partial class SpitTestSceneBuilder
         // The blob sweeps its own collision with a sphere cast, so a collider would only let it shove
         // the fly's CharacterController around on the way out.
         UnityEngine.Object.DestroyImmediate(blob.GetComponent<Collider>());
-        blob.GetComponent<MeshRenderer>().sharedMaterial = assets.Blob;
+        MeshRenderer blobRenderer = blob.GetComponent<MeshRenderer>();
+        blobRenderer.sharedMaterial = assets.Blob;
+        // A 0.06 blob's shadow is a speck nobody sees, but every blob in the air still costs a draw
+        // in the shadow pass.
+        blobRenderer.shadowCastingMode = ShadowCastingMode.Off;
 
         ParticleSystem trail = BuildTrail(NewChild(root, "Trail", Vector3.zero), assets.Droplet);
 
@@ -294,9 +298,11 @@ public partial class SpitTestSceneBuilder
         emission.rateOverTime = 0f;
         emission.SetBursts(new[] { new ParticleSystem.Burst(0f, (short)1) });
 
+        // No emitter shape: the stain is born exactly at this object, which sits just off the surface.
+        // A sphere shape here scattered it up to 0.01 in every direction, more than the 0.006 lift,
+        // so about one stain in ten was born behind the wall and hidden by it.
         ParticleSystem.ShapeModule shape = system.shape;
-        shape.shapeType = ParticleSystemShapeType.Sphere;
-        shape.radius = 0.01f;
+        shape.enabled = false;
 
         ParticleSystem.ColorOverLifetimeModule color = system.colorOverLifetime;
         color.enabled = true;

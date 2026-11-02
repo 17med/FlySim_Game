@@ -14,6 +14,7 @@ using UnityEngine.InputSystem;
 // In the air the fly has momentum: its speed rises and falls at a steady (linear) rate, it glides to a
 // stop when released, and holding Shift (Sprint) boosts its forward speed. Walking has no momentum.
 // The camera's field of view widens with flight speed, so going fast feels fast.
+// Holding Aim (right mouse) slows all movement and narrows the view; AimShootsystem drives that.
 // Put this on an empty parent of the fly model: the model itself carries a 180° X rotation in the
 // scene to stand upright, and rotating it directly would overwrite that correction.
 [RequireComponent(typeof(CharacterController))]
@@ -45,6 +46,12 @@ public class FlyController : MonoBehaviour
     public MovementState State { get; private set; }
     // Read by FlyBodyMotion. Zero while walking or hovering still: walking has no momentum.
     public Vector3 FlyVelocity => flyVelocity;
+    // Written every frame by AimShootsystem; 1 = normal. Speed Multiplier scales walking and all flight
+    // speed (including climb and dive), so aiming slows every kind of movement. Fov Multiplier scales
+    // the speed-based field of view, which is how aiming zooms in without a second script fighting
+    // this one over Camera.fieldOfView.
+    public float SpeedMultiplier { get; set; } = 1f;
+    public float FovMultiplier { get; set; } = 1f;
 
     [Tooltip("The camera the player sees through (the one with OrbitCamera). Main Camera is used if left empty.")]
     [SerializeField] Transform cameraTransform;
@@ -193,7 +200,7 @@ public class FlyController : MonoBehaviour
     {
         if (flyCamera == null)
             return;
-        float targetFov = Mathf.Lerp(defaultFov, maxSpeedFov, SpeedFraction());
+        float targetFov = Mathf.Lerp(defaultFov, maxSpeedFov, SpeedFraction()) * FovMultiplier;
         flyCamera.fieldOfView = Mathf.SmoothDamp(flyCamera.fieldOfView, targetFov, ref fovVelocity, fovChangeTime);
     }
 
@@ -209,7 +216,8 @@ public class FlyController : MonoBehaviour
     // Walks flat along the surface in the steering direction; steering pitch is ignored.
     void Walk(Vector2 move)
     {
-        Vector3 velocity = Quaternion.Euler(0f, steerYaw, 0f) * new Vector3(move.x, 0f, move.y) * walkSpeed
+        // The ground stick push is not slowed: it keeps ground contact, it is not movement.
+        Vector3 velocity = Quaternion.Euler(0f, steerYaw, 0f) * new Vector3(move.x, 0f, move.y) * (walkSpeed * SpeedMultiplier)
                          + Vector3.down * GroundStickSpeed;
         MoveAndDetectGround(velocity);
         // Landing absorbs all flight momentum, so the next take-off starts from rest.
@@ -221,8 +229,8 @@ public class FlyController : MonoBehaviour
     void Fly(Vector2 move, float lift)
     {
         float speed = boostAction.IsPressed() ? moveSpeed * boostMultiplier : moveSpeed;
-        Vector3 targetVelocity = Quaternion.Euler(steerPitch, steerYaw, 0f) * new Vector3(move.x, 0f, move.y) * speed
-                               + Vector3.up * (lift * verticalSpeed);
+        Vector3 targetVelocity = (Quaternion.Euler(steerPitch, steerYaw, 0f) * new Vector3(move.x, 0f, move.y) * speed
+                               + Vector3.up * (lift * verticalSpeed)) * SpeedMultiplier;
         flyVelocity = Accelerate(targetVelocity);
         // Hovering makes no move at all: there is no gravity, and a zero-length move reports no contact.
         if (flyVelocity == Vector3.zero)
