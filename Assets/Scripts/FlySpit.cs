@@ -66,8 +66,43 @@ public class FlySpit : MonoBehaviour
     [Header("Fire Rate")]
     [Tooltip("Seconds between shots, measured from release to release.")]
     [SerializeField] float cooldown = 0.5f;
-    [Tooltip("Keep spitting while the button is held instead of one blob per click.")]
-    [SerializeField] bool autoFire;
+
+    [Header("Ammo")]
+    [SerializeField] SpitAmmo ammo = new SpitAmmo();
+    [Tooltip("Played when the fly tries to spit with no shots left. Optional.")]
+    [SerializeField] AudioSource emptySound;
+    [Tooltip("The on-screen shot drops. Updated every time a shot is used or comes back. Optional.")]
+    [SerializeField] spitinterface spitInterface;
+
+    [Header("Game Feel")]
+    [Tooltip("Shaken a little on every shot. Taken from the camera (Camera Transform or Main Camera) if left empty. Optional.")]
+    [SerializeField] CameraShake cameraShake;
+    [Tooltip("How hard each shot shakes the camera, 0 to 1.")]
+    [SerializeField, Range(0f, 1f)] float shotShake = 0.6f;
+
+    // Hold the button to charge, let go to fire. Because a hold has to mean something different from
+    // a tap, every shot (normal ones too) leaves when the button is let go, not when it is pressed.
+    [Header("Big Shot")]
+    [Tooltip("Seconds the button must be held for the shot to become a Big Shot.")]
+    [SerializeField, Range(0.05f, 2f)] float chargeTime = 0.4f;
+    [Tooltip("Shots a Big Shot uses. With fewer left, holding cannot charge and letting go fires a normal shot.")]
+    [SerializeField, Range(1, 10)] int bigShotCost = 2;
+    [Tooltip("Big Shot size compared to a normal shot: 2 = twice as big, 5 = five times, 6 = six times. Scales the blob, its hit size, its trail and its splash.")]
+    [SerializeField, Range(1f, 10f)] float bigShotSizeMultiplier = 2f;
+    [Tooltip("The Big Shot's lunge (how far back and forward the fly moves, and how much it tilts), as a multiple of the normal one.")]
+    [SerializeField, Range(1f, 3f)] float bigLungeScale = 1.6f;
+    [Tooltip("The Big Shot's thrust and recover take this many times longer, so the heavier shot reads as heavier.")]
+    [SerializeField, Range(1f, 3f)] float bigLungeSlowdown = 1.5f;
+    [Tooltip("How far the fly trembles while fully charged, in units. The fly is 0.4 units across.")]
+    [SerializeField, Range(0f, 0.03f)] float chargeTremble = 0.004f;
+    [Tooltip("Steady camera rumble while fully charged, 0 to 1.")]
+    [SerializeField, Range(0f, 1f)] float chargeRumble = 0.35f;
+    [Tooltip("How hard a Big Shot shakes the camera, 0 to 1.")]
+    [SerializeField, Range(0f, 1f)] float bigShotShake = 1f;
+    [Tooltip("Muzzle burst size on a Big Shot, as a multiple of its normal size. Needs the burst's Scaling Mode on Local or Hierarchy.")]
+    [SerializeField, Range(1f, 5f)] float bigBurstScale = 2f;
+    [Tooltip("Played on a Big Shot instead of Spit Sound. Spit Sound is used if left empty.")]
+    [SerializeField] AudioSource bigSpitSound;
 
     [Header("Lunge Animation")]
     // Short on purpose: the blob only leaves once the windup ends, so this is the delay between the
@@ -96,6 +131,12 @@ public class FlySpit : MonoBehaviour
     // through the fly and spitting along it would land beside the crosshair; aiming at the point under
     // the crosshair instead makes the shot land on it.
     public bool IsAiming { get; set; }
+    // For a HUD: shots available now, the full amount, and how far (0 to 1) the next shot is refilled.
+    public int ShotsLeft => ammo.ShotsLeft;
+    public int MaxShots => ammo.MaxShots;
+    public float RefillProgress => ammo.RefillProgress;
+    // True while the button has been held long enough, with enough shots, for letting go to fire a Big Shot.
+    public bool IsCharged => isHolding && holdTime >= chargeTime && ammo.CanSpend(bigShotCost);
 
     readonly RaycastHit[] crosshairHits = new RaycastHit[16];
     ObjectPool<SpitProjectile> projectilePool;
@@ -109,12 +150,29 @@ public class FlySpit : MonoBehaviour
     float spitTime = float.MaxValue;
     float cooldownLeft;
     bool hasSpitTrigger;
+    // The button went down while a shot was allowed and has not been let go yet.
+    bool isHolding;
+    float holdTime;
+    // The current shot's lunge: its size (1 normal, Big Lunge Scale for a Big Shot), its phase lengths,
+    // and how far back the fly already was when it started, so the windup carries on from the charge
+    // pose instead of jumping back to rest first.
+    float shotLungeScale = 1f;
+    float shotThrustTime;
+    float shotRecoverTime;
+    float windupStartAmount;
+    bool isBigShotInProgress;
+    Vector3 burstRestScale = Vector3.one;
 
-    float TotalLungeTime => windupTime + thrustTime + recoverTime;
+    float TotalLungeTime => windupTime + shotThrustTime + shotRecoverTime;
 
     void Awake()
     {
         fly = GetComponent<FlyController>();
+        ammo.Fill();
+        shotThrustTime = thrustTime;
+        shotRecoverTime = recoverTime;
+        if (muzzleBurst != null)
+            burstRestScale = muzzleBurst.transform.localScale;
         // Throws if the action is missing: a weapon whose button silently does nothing is worse than
         // a clear error.
         attackAction = InputSystem.actions.FindAction(AttackActionName, throwIfNotFound: true);
@@ -147,6 +205,9 @@ public class FlySpit : MonoBehaviour
 
         if (cameraTransform == null && Camera.main != null)
             cameraTransform = Camera.main.transform;
+        // Fails open: with no CameraShake on the camera the fly shoots the same, just without the jolt.
+        if (cameraShake == null && cameraTransform != null)
+            cameraShake = cameraTransform.GetComponent<CameraShake>();
         // Fails open: AimDirection falls back to the fly's own heading, which still shoots, just only
         // ever straight ahead.
         if (aimAlongCamera && cameraTransform == null)
@@ -167,6 +228,7 @@ public class FlySpit : MonoBehaviour
     // Creates the blobs up front: taking them all out and putting them back leaves them in the pool.
     void Start()
     {
+        UpdateSpitInterface();
         var prewarmed = new List<SpitProjectile>(prewarmCount);
         for (int i = 0; i < prewarmCount; i++)
             prewarmed.Add(projectilePool.Get());
@@ -211,40 +273,142 @@ public class FlySpit : MonoBehaviour
     {
         cooldownLeft -= Time.deltaTime;
         spitTime += Time.deltaTime;
+        if (ammo.Tick(Time.deltaTime))
+            UpdateSpitInterface();
 
-        bool wantsToSpit = autoFire ? attackAction.IsPressed() : attackAction.WasPressedThisFrame();
-        // A shot already winding up still leaves if Aim is let go mid-windup: cancelling it would
-        // leave the fly rearing back for nothing.
-        if (wantsToSpit && IsAiming && cooldownLeft <= 0f)
-            BeginSpit();
+        HandleAttackButton();
 
-        // Released on the frame the windup ends rather than the frame the button was pressed, so the
-        // blob appears out of a mouth that has already reared back.
+        // Released on the frame the windup ends rather than the frame the button was let go, so the
+        // blob appears out of a mouth that has already reared back. A shot already winding up still
+        // leaves if Aim is let go mid-windup: cancelling it would leave the fly rearing back for nothing.
         if (spitTime >= windupTime && spitTime - Time.deltaTime < windupTime)
-            Release();
+            Release(isBigShotInProgress);
     }
 
-    void BeginSpit()
+    // Press starts a hold, holding charges, letting go fires: a Big Shot if charged, otherwise a normal one.
+    void HandleAttackButton()
     {
-        spitTime = 0f;
+        if (attackAction.WasPressedThisFrame())
+            TryStartHold();
+        if (!isHolding)
+            return;
+
+        // Letting go of Aim while charging cancels the shot and spends nothing.
+        if (!IsAiming)
+        {
+            EndHold();
+            return;
+        }
+
+        holdTime += Time.deltaTime;
+        if (!attackAction.IsPressed())
+        {
+            // Both read before EndHold, which clears the hold they are measured from.
+            bool isBigShot = IsCharged;
+            float heldRear = ChargeAmount();
+            EndHold();
+            BeginSpit(isBigShot, heldRear);
+            return;
+        }
+
+        if (IsCharged)
+            PlayChargeFeedback();
+    }
+
+    void TryStartHold()
+    {
+        if (!IsAiming || cooldownLeft > 0f)
+            return;
+        if (!ammo.CanSpend(1))
+        {
+            PlayEmpty();
+            return;
+        }
+        isHolding = true;
+        holdTime = 0f;
+    }
+
+    void EndHold()
+    {
+        isHolding = false;
+        holdTime = 0f;
+        if (spitInterface != null)
+            spitInterface.ClearCharge();
+    }
+
+    // Runs every frame while fully charged; the camera rumble only lasts the frame it is asked for.
+    void PlayChargeFeedback()
+    {
+        if (cameraShake != null)
+            cameraShake.Rumble(chargeRumble);
+        if (spitInterface != null)
+            spitInterface.ShowCharge(ammo.ShotsLeft, bigShotCost);
+    }
+
+    // heldRear: how far back the hold had the fly (ChargeAmount), so the windup carries on from there.
+    void BeginSpit(bool isBigShot, float heldRear)
+    {
+        windupStartAmount = heldRear;
+        isBigShotInProgress = isBigShot;
+        ammo.TrySpend(isBigShot ? bigShotCost : 1);
+        UpdateSpitInterface();
         cooldownLeft = cooldown;
+
+        float slowdown = isBigShot ? bigLungeSlowdown : 1f;
+        shotLungeScale = isBigShot ? bigLungeScale : 1f;
+        shotThrustTime = thrustTime * slowdown;
+        shotRecoverTime = recoverTime * slowdown;
+        // A charged fly is already fully reared back, so the Big Shot skips the windup and leaves this
+        // frame; a normal shot winds up the rest of the way from wherever the hold left it.
+        spitTime = isBigShot ? windupTime : 0f;
         if (hasSpitTrigger)
             animator.SetTrigger(SpitAnimParameter);
     }
 
-    void Release()
+    // Uses the cooldown too, so mashing the button while empty clicks once per cooldown.
+    void PlayEmpty()
+    {
+        cooldownLeft = cooldown;
+        if (emptySound != null)
+            emptySound.Play();
+        if (spitInterface != null)
+            spitInterface.PlayEmpty();
+    }
+
+    // Fails open: with no Spit Interface assigned the fly still shoots and refills, just with no drops
+    // on screen.
+    void UpdateSpitInterface()
+    {
+        if (spitInterface != null)
+            spitInterface.ShowShots(ammo.ShotsLeft);
+    }
+
+    void Release(bool isBigShot)
     {
         Vector3 direction = AimDirection();
         // The fly's own speed is added after the spread, so spread stays an angle off the aim rather
         // than an angle off the combined path.
         Vector3 velocity = direction * spitSpeed + fly.FlyVelocity * velocityInheritance;
+        float size = isBigShot ? spitSize * bigShotSizeMultiplier : spitSize;
+        projectilePool.Get().Launch(MuzzlePosition(), velocity, transform, size);
 
-        projectilePool.Get().Launch(MuzzlePosition(), velocity, transform, spitSize);
+        PlayMuzzleBurst(isBigShot ? bigBurstScale : 1f);
+        AudioSource sound = isBigShot && bigSpitSound != null ? bigSpitSound : spitSound;
+        if (sound != null)
+            sound.Play();
+        // On release, not on the click: the shot has already been aimed, so the jolt never moves it.
+        if (cameraShake != null)
+            cameraShake.Shake(isBigShot ? bigShotShake : shotShake);
+    }
 
-        if (muzzleBurst != null)
-            muzzleBurst.Play();
-        if (spitSound != null)
-            spitSound.Play();
+    // The burst is rescaled before each play; particles from a previous burst still in the air are
+    // resized with it, which is too brief to notice at these lifetimes.
+    void PlayMuzzleBurst(float scale)
+    {
+        if (muzzleBurst == null)
+            return;
+        muzzleBurst.transform.localScale = burstRestScale * scale;
+        muzzleBurst.Play();
     }
 
     Vector3 AimDirection()
@@ -338,39 +502,57 @@ public class FlySpit : MonoBehaviour
             return;
         }
 
+        // A fully charged fly shakes in place, like it is straining to hold the spit in.
+        Vector3 tremble = IsCharged ? Random.insideUnitSphere * chargeTremble : Vector3.zero;
         // Pre-multiplying puts the tilt in this object's space, so it is a nose dip along the fly's
         // heading and the model's own 180° X correction is left intact.
         Quaternion tilt = Quaternion.Euler(lunge * lungeTilt, 0f, 0f);
-        model.localPosition = basePosition + Vector3.forward * (lunge * lungeDistance);
+        model.localPosition = basePosition + Vector3.forward * (lunge * lungeDistance) + tremble;
         model.localRotation = tilt * baseRotation;
     }
 
-    // -1 fully reared back, 0 at rest, +1 fully lunged forward.
+    // Negative is reared back, 0 at rest, positive lunged forward. A normal shot goes from -1 to +1;
+    // a Big Shot, and the charge before it, goes Big Lunge Scale times as far.
     float LungeAmount()
     {
+        if (isHolding)
+            return -ChargeAmount();
         if (spitTime >= TotalLungeTime)
             return 0f;
 
+        float scale = shotLungeScale;
         if (spitTime < windupTime)
         {
-            // Eases out, so the fly settles into the wound-up pose instead of snapping to it.
+            // Eases out, so the fly settles into the wound-up pose instead of snapping to it. Starts
+            // from the held pose, so a tap that already reared back partway does not jump to rest first.
             float t = spitTime / windupTime;
-            return -Mathf.Sin(t * Mathf.PI * 0.5f);
+            return -Mathf.Lerp(windupStartAmount, scale, Mathf.Sin(t * Mathf.PI * 0.5f));
         }
 
-        float thrustEnd = windupTime + thrustTime;
+        float thrustEnd = windupTime + shotThrustTime;
         if (spitTime < thrustEnd)
         {
             // Eased in and out. It used to be linear, so the snap was the one unpolished part of the
             // move, but at 0.07 s that is about 4 frames, and starting and stopping at full speed
             // read as a jerk. The windup ends at rest and the recover starts at rest, so easing both
             // ends keeps the whole lunge free of sudden speed changes.
-            float t = (spitTime - windupTime) / thrustTime;
-            return Mathf.Lerp(-1f, 1f, Mathf.SmoothStep(0f, 1f, t));
+            float t = (spitTime - windupTime) / shotThrustTime;
+            return Mathf.Lerp(-scale, scale, Mathf.SmoothStep(0f, 1f, t));
         }
 
-        float recover = (spitTime - thrustEnd) / recoverTime;
-        return Mathf.Cos(recover * Mathf.PI * 0.5f);
+        float recover = (spitTime - thrustEnd) / shotRecoverTime;
+        return scale * Mathf.Cos(recover * Mathf.PI * 0.5f);
+    }
+
+    // How far back holding the button has the fly: eases up to 1 over Charge Time, or up to Big Lunge
+    // Scale when there are enough shots for a Big Shot, so the deeper pose means "this one is big".
+    float ChargeAmount()
+    {
+        if (!isHolding)
+            return 0f;
+        float fullRear = ammo.CanSpend(bigShotCost) ? bigLungeScale : 1f;
+        float t = Mathf.Clamp01(holdTime / chargeTime);
+        return fullRear * Mathf.Sin(t * Mathf.PI * 0.5f);
     }
 
     // Setting a trigger the controller does not declare logs an error every shot, so it is checked once.
