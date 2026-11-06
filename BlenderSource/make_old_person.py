@@ -1,7 +1,8 @@
 """
 old_person — low-poly elderly man in a sweater vest, Unity-Humanoid skeleton.
 Run:  blender --background --python make_old_person.py -- <out_dir>
-Produces: <out_dir>/old_person.fbx, <out_dir>/old_person.png, <out_dir>/old_person.blend
+Produces: <out_dir>/old_person.fbx + old_person.png, and old_person.blend next
+to this script (never inside Assets/, where Unity would import it as a model).
 """
 import bpy, bmesh, sys, os, math
 from mathutils import Vector
@@ -17,7 +18,7 @@ bpy.context.scene.unit_settings.system = 'METRIC'
 bpy.context.scene.unit_settings.scale_length = 1.0
 
 # ---------------------------------------------------------------- palette
-# 4x4 atlas, index = row*4 + col (row 0 = bottom of image)
+# GRID x GRID atlas, index = row*GRID + col (row 0 = bottom of image)
 PAL = [
     ("skin",     (0.839, 0.659, 0.545)),
     ("hair",     (0.871, 0.871, 0.847)),
@@ -35,11 +36,21 @@ PAL = [
     ("trous_sh", (0.247, 0.251, 0.275)),
     ("hair_sh",  (0.776, 0.776, 0.757)),
     ("white",    (0.898, 0.898, 0.886)),
+    # --- eyes: a warm off-white sclera; pure white reads as plastic
+    ("sclera",    (0.925, 0.910, 0.882)),
+    ("sclera_sh", (0.800, 0.773, 0.741)),
+    ("iris",      (0.396, 0.478, 0.498)),
+    ("iris_dk",   (0.231, 0.306, 0.329)),
+    ("pupil",     (0.055, 0.059, 0.071)),
+    ("glint",     (1.000, 1.000, 0.992)),
+    ("lid",       (0.816, 0.631, 0.518)),
+    ("socket",    (0.714, 0.525, 0.424)),
 ]
 CIDX = {n: i for i, (n, _) in enumerate(PAL)}
 
-TEX = 128
-CELL = TEX // 4
+GRID = 8                 # 8x8 cells: room for the eye colours, still tiny
+CELL = 32
+TEX = GRID * CELL
 
 
 def build_texture():
@@ -49,7 +60,8 @@ def build_texture():
         row = y // CELL
         for x in range(TEX):
             col = x // CELL
-            r, g, b = PAL[row * 4 + col][1]
+            i = row * GRID + col
+            r, g, b = PAL[i][1] if i < len(PAL) else (0.5, 0.5, 0.5)
             o = (y * TEX + x) * 4
             px[o:o + 4] = [r, g, b, 1.0]
     img.pixels = px
@@ -61,9 +73,9 @@ def build_texture():
 
 def uv_rect(cname):
     i = CIDX[cname]
-    col, row = i % 4, i // 4
-    u0, u1 = (col + 0.28) / 4.0, (col + 0.72) / 4.0
-    v0, v1 = (row + 0.28) / 4.0, (row + 0.72) / 4.0
+    col, row = i % GRID, i // GRID
+    u0, u1 = (col + 0.28) / GRID, (col + 0.72) / GRID
+    v0, v1 = (row + 0.28) / GRID, (row + 0.72) / GRID
     return [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
 
 
@@ -74,7 +86,14 @@ def uv_rect(cname):
 VERTS, FACES, FCOL, PART = [], [], [], []
 
 
-SIDES = 8          # cross-section resolution: 8 reads as rounded, still low-poly
+SIDES = 14         # cross-section resolution: 14 reads as genuinely round
+PATCH = set()      # faces whose winding is authored, not recalculated
+
+
+def add_face(f, color, part, patch=False):
+    if patch:
+        PATCH.add(len(FACES))
+    FACES.append(f); FCOL.append(color); PART.append(part)
 
 
 def ring_pts(axis, a, u0, u1, v0, v1, sides):
@@ -119,70 +138,280 @@ def box(x0, x1, y0, y1, z0, z1, color, part):
     tube([(z0, x0, x1, y0, y1), (z1, x0, x1, y0, y1)], 'Z', color, part, sides=4)
 
 
+def res(sections, k=3):
+    """Catmull-Rom resample of a section list, k-1 extra rings per span.
+    The hand-written sections stay the silhouette key-frames; this turns the
+    straight runs between them into a continuous curve, which is most of what
+    makes the body read as smooth rather than stacked."""
+    if k <= 1 or len(sections) < 2:
+        return [tuple(s) for s in sections]
+    S = [list(s) for s in sections]
+    P = [S[0]] + S + [S[-1]]
+    out = []
+    for i in range(len(S) - 1):
+        p0, p1, p2, p3 = P[i], P[i + 1], P[i + 2], P[i + 3]
+        for j in range(k):
+            t = j / k
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(
+                0.5 * (2.0 * b + (-a + c) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2
+                       + (-a + 3.0 * b - 3.0 * c + d) * t3)
+                for a, b, c, d in zip(p0, p1, p2, p3)))
+    out.append(tuple(S[-1]))
+    return out
+
+
+# ------------------------------------------------- shells laid on the face
+# Eyes, brows and lips are built as thin shells offset along the head's own
+# surface normal. Sitting on the skull's curvature is what keeps them flush
+# with the face: a free-standing eyeball sphere bulges off a head this round.
+def _front_chain(s):
+    """The front half of one head ring, as the mesh actually builds it."""
+    cu, ru = (s[1] + s[2]) * 0.5, (s[2] - s[1]) * 0.5
+    cv, rv = (s[3] + s[4]) * 0.5, (s[4] - s[3]) * 0.5
+    off = math.pi / SIDES
+    pts = []
+    for k in range(SIDES):
+        a = off + 2.0 * math.pi * k / SIDES
+        pts.append((cu + ru * math.cos(a), cv + rv * math.sin(a)))
+    return sorted(p for p in pts if p[1] < cv), ru, cv, rv
+
+
+def head_surf(x, z, out=0.0):
+    """Point on the front of the head at lateral x / height z, pushed `out`
+    along the surface normal. This lands on the *faceted* skin, not on the
+    ideal ellipse - the 14-gon sits up to 2 mm inside it, which is more than
+    the whole eye is proud of the face, so shells offset from the ellipse
+    float visibly. Off the facets, sub-millimetre offsets behave."""
+    S = HEAD_RINGS
+    if z <= S[0][0]:
+        s = S[0]
+    elif z >= S[-1][0]:
+        s = S[-1]
+    else:
+        i = max(j for j in range(len(S) - 1) if S[j][0] <= z)
+        t = (z - S[i][0]) / (S[i + 1][0] - S[i][0])
+        s = tuple(a + (b - a) * t for a, b in zip(S[i], S[i + 1]))
+    f, ru, cv, rv = _front_chain(s)
+    x = max(f[0][0], min(f[-1][0], x))
+    k = max(j for j in range(len(f) - 1) if f[j][0] <= x)
+    (u0, v0), (u1, v1) = f[k], f[k + 1]
+    y = v0 + (v1 - v0) * ((x - u0) / (u1 - u0) if u1 != u0 else 0.0)
+    # offset along the smooth normal so neighbouring facets don't kink apart
+    q = max(-0.985, min(0.985, x / ru))
+    nx, ny = q / ru, -math.sqrt(1.0 - q * q) / rv
+    n = math.hypot(nx, ny)
+    return (x + out * nx / n, y + out * ny / n, z)
+
+
+def face_disc(cx, cz, rx, rz, color, part, out_c, out_r,
+              segs=14, rings=3, rim=None):
+    """Filled elliptical shell on the face, domed out_c at the centre falling
+    to out_r at the rim; `rim` colours the outermost band."""
+    base = len(VERTS)
+    VERTS.append(head_surf(cx, cz, out_c))
+    for i in range(1, rings + 1):
+        s = i / rings
+        o = out_r + (out_c - out_r) * (1.0 - s * s)
+        for j in range(segs):
+            a = 2.0 * math.pi * j / segs
+            VERTS.append(head_surf(cx + rx * s * math.cos(a),
+                                   cz + rz * s * math.sin(a), o))
+    for j in range(segs):
+        j2 = (j + 1) % segs
+        add_face((base, base + 1 + j, base + 1 + j2), color, part, True)
+    for i in range(rings - 1):
+        c = rim if (rim and i == rings - 2) else color
+        r0, r1 = base + 1 + i * segs, base + 1 + (i + 1) * segs
+        for j in range(segs):
+            j2 = (j + 1) % segs
+            add_face((r0 + j, r1 + j, r1 + j2, r0 + j2), c, part, True)
+
+
+def face_band(x0, x1, lo, hi, color, part, out_lo, out_hi,
+              nu=16, nv=3, fade=0.0, sink=-0.0032):
+    """Shell on the face between two z(x) curves - eyelids, brows, lips.
+    `fade` is the fraction of the width at each end over which the shell
+    drops to `sink` and so ducks under the skin: without it every patch
+    reads as a rectangular plate stuck on the face. A negative out_hi does
+    the same along the far edge."""
+    base = len(VERTS)
+    for j in range(nv + 1):
+        t = j / nv
+        prof = out_lo + (out_hi - out_lo) * t
+        for i in range(nu + 1):
+            u = i / nu
+            x = x0 + (x1 - x0) * u
+            m = 1.0 if fade <= 0.0 else min(1.0, min(u, 1.0 - u) / fade)
+            m = m * m * (3.0 - 2.0 * m)
+            z0, z1 = lo(x), hi(x)
+            VERTS.append(head_surf(x, z0 + (z1 - z0) * t,
+                                   sink + (prof - sink) * m))
+    for j in range(nv):
+        for i in range(nu):
+            a = base + j * (nu + 1) + i
+            b = a + (nu + 1)
+            add_face((a, a + 1, b + 1, b), color, part, True)
+
+
 # --- measurements (metres, feet z=0, faces -Y, character LEFT = +X)
 K = 0.96          # global trim so the finished figure is ~1.75 m
 HF = -0.015       # elderly forward head carriage
 ARM_Z = 1.400
 
 # head ---------------------------------------------------------------------
-tube([
+HEAD_PROFILE = [
     (1.558, -0.070, 0.070, -0.066 + HF, 0.058 + HF),
     (1.598, -0.082, 0.082, -0.082 + HF, 0.074 + HF),
     (1.655, -0.090, 0.090, -0.090 + HF, 0.082 + HF),
     (1.715, -0.092, 0.092, -0.092 + HF, 0.084 + HF),
     (1.775, -0.086, 0.086, -0.088 + HF, 0.080 + HF),
     (1.812, -0.058, 0.058, -0.062 + HF, 0.054 + HF),
-], 'Z', "skin", "head")
+]
+HEAD_RINGS = res(HEAD_PROFILE, 3)
+tube(HEAD_RINGS, 'Z', "skin", "head")
 
 # thinning grey hair: cap + band round the back and sides
-tube([
+tube(res([
+    (1.728, -0.086, 0.086, -0.074 + HF, 0.082 + HF),   # tucked under the skin
     (1.734, -0.095, 0.095, -0.080 + HF, 0.090 + HF),
     (1.766, -0.098, 0.098, -0.092 + HF, 0.092 + HF),
     (1.800, -0.090, 0.090, -0.090 + HF, 0.086 + HF),
     (1.830, -0.058, 0.058, -0.060 + HF, 0.056 + HF),
-], 'Z', "hair", "head")
-tube([
+], 3), 'Z', "hair", "head")
+tube(res([
+    (1.608, -0.079, 0.079, 0.028 + HF, 0.078 + HF),    # tucked under the skin
     (1.618, -0.088, 0.088, 0.022 + HF, 0.086 + HF),
     (1.672, -0.093, 0.093, 0.010 + HF, 0.090 + HF),
     (1.715, -0.097, 0.097, 0.000 + HF, 0.092 + HF),
-], 'Z', "hair", "head")
+], 3), 'Z', "hair", "head")
 
-box(0.090, 0.101, 0.000 + HF, 0.038 + HF, 1.628, 1.672, "skin_sh", "head")
-box(-0.101, -0.090, 0.000 + HF, 0.038 + HF, 1.628, 1.672, "skin_sh", "head")
-box(-0.013, 0.013, -0.114 + HF, -0.088 + HF, 1.662, 1.710, "skin", "head")      # nose
-box(0.024, 0.060, -0.098 + HF, -0.088 + HF, 1.680, 1.700, "eye", "head")
-box(-0.060, -0.024, -0.098 + HF, -0.088 + HF, 1.680, 1.700, "eye", "head")
-box(0.024, 0.060, -0.098 + HF, -0.091 + HF, 1.708, 1.716, "hair", "head")       # white brows
-box(-0.060, -0.024, -0.098 + HF, -0.091 + HF, 1.708, 1.716, "hair", "head")
-box(-0.026, 0.026, -0.092 + HF, -0.084 + HF, 1.586, 1.596, "lip", "head")
+# ears
+for _sx in (1.0, -1.0):
+    tube(res([
+        (0.084 * _sx, 0.008 + HF, 0.036 + HF, 1.655, 1.692),
+        (0.096 * _sx, 0.002 + HF, 0.042 + HF, 1.648, 1.700),
+        (0.103 * _sx, 0.010 + HF, 0.034 + HF, 1.656, 1.690),
+    ], 2), 'X', "skin", "head", sides=10)
+
+# nose - a swept profile instead of a block, so the bridge flows into the tip
+tube(res([
+    (1.648, -0.012, 0.012, -0.104 + HF, -0.086 + HF),
+    (1.658, -0.013, 0.013, -0.118 + HF, -0.086 + HF),
+    (1.668, -0.0125, 0.0125, -0.127 + HF, -0.086 + HF),
+    (1.682, -0.011, 0.011, -0.120 + HF, -0.086 + HF),
+    (1.697, -0.0095, 0.0095, -0.109 + HF, -0.086 + HF),
+    (1.712, -0.008, 0.008, -0.100 + HF, -0.086 + HF),
+], 3), 'Z', "skin", "head", sides=10)
+
+# eyes ---------------------------------------------------------------------
+EYE_X, EYE_Z = 0.042, 1.693              # centre of each eye on the face
+APW, APU, APL = 0.0195, 0.0088, 0.0082   # aperture half-width, rise, drop
+
+
+def ap(x, ex, h, over=0.0):
+    """Lens-shaped lid edge: `h` tall mid-eye, pointed at the corners."""
+    t = abs(x - ex) / APW
+    return -over if t >= 1.0 else h * (1.0 - t * t) ** 1.15
+
+
+def eye(sx):
+    ex = EYE_X * sx
+    # sclera / iris / pupil / catch-light: concentric shells, each a hair prouder
+    face_disc(ex, EYE_Z, 0.0205, 0.0126, "sclera", "head", 0.0013, 0.0004,
+              rim="sclera_sh")
+    face_disc(ex, EYE_Z - 0.0005, 0.0101, 0.0101, "iris", "head", 0.0018, 0.0015,
+              segs=14, rings=3, rim="iris_dk")
+    face_disc(ex, EYE_Z - 0.0005, 0.0046, 0.0046, "pupil", "head", 0.0021, 0.0019,
+              segs=12, rings=2)
+    # one light in the room, so both catch-lights sit on the same side
+    face_disc(ex + 0.0044, EYE_Z + 0.0044, 0.0023, 0.0023, "glint", "head",
+              0.0024, 0.0023, segs=8, rings=1)
+    # lids, drawn over the sclera - they cut the almond aperture
+    face_band(ex - 0.0300, ex + 0.0300,
+              lambda x: EYE_Z + ap(x, ex, APU),
+              lambda x: EYE_Z + 0.0235,
+              "skin", "head", 0.0026, -0.0012, nu=22, nv=4, fade=0.13,
+              sink=-0.0014)
+    face_band(ex - 0.0295, ex + 0.0295,
+              lambda x: EYE_Z - ap(x, ex, APL, over=0.0024),
+              lambda x: EYE_Z - 0.0245,
+              "skin", "head", 0.0024, -0.0012, nu=22, nv=4, fade=0.13,
+              sink=-0.0014)
+    # lash line: the dark rim that gives the lid an edge
+    face_band(ex - APW, ex + APW,
+              lambda x: EYE_Z + ap(x, ex, APU),
+              lambda x: EYE_Z + ap(x, ex, APU) + 0.0019,
+              "eye", "head", 0.0029, 0.0028, nu=18, nv=1, fade=0.12,
+              sink=-0.0010)
+    # crease above the lid, then the white brow
+    face_band(ex - 0.0240, ex + 0.0240,
+              lambda x: EYE_Z + 0.0124 + 0.0024 * (1.0 - ((x - ex) / 0.0240) ** 2),
+              lambda x: EYE_Z + 0.0150 + 0.0024 * (1.0 - ((x - ex) / 0.0240) ** 2),
+              "socket", "head", 0.0030, 0.0031, nu=18, nv=1, fade=0.28,
+              sink=-0.0012)
+    face_band(ex - 0.0250, ex + 0.0250,
+              lambda x: EYE_Z + 0.0156 + 0.0030 * (1.0 - ((x - ex) / 0.0250) ** 2),
+              lambda x: EYE_Z + 0.0208 + 0.0038 * (1.0 - ((x - ex) / 0.0250) ** 2),
+              "hair", "head", 0.0036, 0.0030, nu=24, nv=3, fade=0.30,
+              sink=-0.0016)
+
+
+eye(1.0)
+eye(-1.0)
+
+# mouth
+# mouth: two lips meeting on a shared line, each tapering to the corners -
+# the same lens trick as the eye aperture, or the lips read as a sticker
+MW, ZM = 0.0262, 1.5902
+
+
+def lens(x, p=0.85):
+    return max(0.0, 1.0 - (x / MW) ** 2) ** p
+
+
+def mouth_line(x):
+    return ZM + 0.0032 * (1.0 - (x / MW) ** 2)
+
+
+face_band(-MW, MW, mouth_line,
+          lambda x: mouth_line(x) + 0.0054 * lens(x),
+          "lip", "head", 0.0028, 0.0013, nu=22, nv=3, fade=0.10, sink=-0.0014)
+face_band(-MW, MW,
+          lambda x: mouth_line(x) - 0.0068 * lens(x), mouth_line,
+          "lip", "head", 0.0013, 0.0028, nu=22, nv=3, fade=0.10, sink=-0.0014)
+face_band(-MW, MW,
+          lambda x: mouth_line(x) - 0.0009 * lens(x, 0.45),
+          lambda x: mouth_line(x) + 0.0009 * lens(x, 0.45),
+          "eye", "head", 0.0032, 0.0032, nu=22, nv=1, fade=0.08, sink=-0.0012)
 
 # neck + shirt collar -------------------------------------------------------
-tube([
+tube(res([
     (1.380, -0.052, 0.052, -0.049, 0.049),
     (1.480, -0.049, 0.049, -0.046 + HF * 0.5, 0.046 + HF * 0.5),
     (1.566, -0.047, 0.047, -0.045 + HF, 0.045 + HF),
-], 'Z', "skin", "neck")
-tube([
+], 3), 'Z', "skin", "neck")
+tube(res([
     (1.418, -0.080, 0.080, -0.074, 0.074),
     (1.492, -0.066, 0.066, -0.062, 0.062),
-], 'Z', "shirt", "neck", caps=(False, True))
+], 3), 'Z', "shirt", "neck", caps=(False, True))
 
 # shoulder yoke - blue shirt above the sleeveless vest ----------------------
-tube([
+tube(res([
     (1.340, -0.176, 0.176, -0.108, 0.106),
     (1.405, -0.190, 0.190, -0.105, 0.104),
     (1.452, -0.158, 0.158, -0.096, 0.095),
     (1.478, -0.098, 0.098, -0.080, 0.079),
-], 'Z', "shirt", "chest")
+], 3), 'Z', "shirt", "chest")
 
 # sweater vest --------------------------------------------------------------
-tube([
+tube(res([
     (0.955, -0.172, 0.172, -0.112, 0.110),
     (1.050, -0.175, 0.175, -0.122, 0.116),   # paunch
     (1.160, -0.178, 0.178, -0.124, 0.115),
     (1.265, -0.180, 0.180, -0.117, 0.110),
     (1.348, -0.182, 0.182, -0.110, 0.107),
-], 'Z', "vest", "chest")
+], 3), 'Z', "vest", "chest")
 
 # shirt showing through the V-neck
 tube([
@@ -196,46 +425,47 @@ tube([
     (0.898, -0.168, 0.168, -0.116, 0.116),
     (0.958, -0.168, 0.168, -0.116, 0.116),
 ], 'Z', "dark", "pelvis")
-tube([
+tube(res([
     (0.836, -0.112, 0.112, -0.080, 0.080),
     (0.892, -0.164, 0.164, -0.113, 0.113),
     (0.990, -0.164, 0.164, -0.114, 0.114),
-], 'Z', "trousers", "pelvis")
+], 3), 'Z', "trousers", "pelvis")
 
 # legs ----------------------------------------------------------------------
 for side, sx in (("L", 1.0), ("R", -1.0)):
     cx = 0.090 * sx
-    tube([
+    tube(res([
         (0.962, cx - 0.072, cx + 0.072, -0.098, 0.098),
         (0.880, cx - 0.074, cx + 0.074, -0.100, 0.100),
         (0.700, cx - 0.070, cx + 0.070, -0.094, 0.092),
         (0.500, cx - 0.064, cx + 0.064, -0.086, 0.084),
         (0.280, cx - 0.058, cx + 0.058, -0.076, 0.072),
-        (0.118, cx - 0.054, cx + 0.054, -0.068, 0.064),
-    ], 'Z', "trousers", "leg" + side)
-    tube([
+        (0.128, cx - 0.052, cx + 0.052, -0.066, 0.062),
+        (0.098, cx - 0.047, cx + 0.047, -0.058, 0.054),
+    ], 3), 'Z', "trousers", "leg" + side)
+    tube(res([
         (0.000, cx - 0.056, cx + 0.056, -0.190, 0.060),
         (0.026, cx - 0.062, cx + 0.062, -0.202, 0.064),
         (0.068, cx - 0.060, cx + 0.060, -0.168, 0.062),
         (0.105, cx - 0.055, cx + 0.055, -0.092, 0.058),
         (0.140, cx - 0.052, cx + 0.052, -0.070, 0.054),
-    ], 'Z', "shoe", "shoe" + side)
+    ], 2), 'Z', "shoe", "shoe" + side)
 
 # arms - T-pose bind -------------------------------------------------------
 for side, sx in (("L", 1.0), ("R", -1.0)):
-    tube([
+    tube(res([
         (0.165 * sx, -0.060, 0.060, ARM_Z - 0.066, ARM_Z + 0.066),
         (0.250 * sx, -0.055, 0.055, ARM_Z - 0.058, ARM_Z + 0.058),
         (0.410 * sx, -0.048, 0.048, ARM_Z - 0.050, ARM_Z + 0.050),
         (0.560 * sx, -0.042, 0.042, ARM_Z - 0.044, ARM_Z + 0.044),
         (0.640 * sx, -0.038, 0.038, ARM_Z - 0.040, ARM_Z + 0.040),
-    ], 'X', "shirt", "arm" + side)
-    tube([
+    ], 3), 'X', "shirt", "arm" + side)
+    tube(res([
         (0.638 * sx, -0.036, 0.036, ARM_Z - 0.038, ARM_Z + 0.038),
         (0.710 * sx, -0.040, 0.040, ARM_Z - 0.048, ARM_Z + 0.048),
         (0.790 * sx, -0.036, 0.036, ARM_Z - 0.044, ARM_Z + 0.044),
         (0.815 * sx, -0.022, 0.022, ARM_Z - 0.030, ARM_Z + 0.030),
-    ], 'X', "skin", "arm" + side)
+    ], 3), 'X', "skin", "arm" + side)
 
 VERTS[:] = [(x * K, y * K, z * K) for x, y, z in VERTS]
 
@@ -255,11 +485,19 @@ for fi, poly in enumerate(me.polygons):
 
 # consistent outward normals, then smooth-shade everything below 55 degrees
 bm = bmesh.new(); bm.from_mesh(me)
-bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+bm.faces.ensure_lookup_table()
+# recalc only closed shells: a flat open patch has no outside to find, so the
+# face shells keep their authored winding and are flipped to face front instead
+bmesh.ops.recalc_face_normals(
+    bm, faces=[f for i, f in enumerate(bm.faces) if i not in PATCH])
+bm.normal_update()
+flip = [bm.faces[i] for i in PATCH if bm.faces[i].normal.y > 0.0]
+if flip:
+    bmesh.ops.reverse_faces(bm, faces=flip)
 bm.normal_update()
 for e in bm.edges:
     if len(e.link_faces) == 2:
-        e.smooth = e.link_faces[0].normal.angle(e.link_faces[1].normal) < math.radians(55)
+        e.smooth = e.link_faces[0].normal.angle(e.link_faces[1].normal) < math.radians(68)
     else:
         e.smooth = False
 bm.to_mesh(me); bm.free()
@@ -548,7 +786,8 @@ bpy.ops.export_scene.fbx(
     axis_up='Y',
 )
 
-bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, NAME + ".blend"))
+SRC = os.path.dirname(os.path.abspath(__file__))
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(SRC, NAME + ".blend"))
 
 print("TRIS/QUADS:", len(me.polygons), "VERTS:", len(me.vertices),
       "BONES:", len(arm_data.bones))

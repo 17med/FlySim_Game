@@ -1,0 +1,9 @@
+# Diptox Aerosol Can Material for Unity
+newmtl Diptox_PBR_Mat
+Ka 1.000 1.000 1.000
+Kd 1.000 1.000 1.000
+Ks 0.350 0.350 0.350
+Ns 250.0
+d 1.0
+illum 2
+map_Kd diptox_albedo.png
