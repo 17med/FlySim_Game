@@ -86,7 +86,12 @@ public class OldPersonFPSController : MonoBehaviour
         if (animator == null)
             Debug.LogWarning("OldPersonFPSController: no Animator found; walking without animation.", this);
         else
+        {
+            // The real body is on a layer this camera does not draw, so Unity can decide it is invisible
+            // and stop animating it (the model's default culling), freezing the walk; it must always animate.
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             FindHeadBones();
+        }
 
         if (viewCamera == null)
             viewCamera = GetComponentInChildren<Camera>();
