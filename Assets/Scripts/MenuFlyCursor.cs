@@ -86,7 +86,7 @@ public class MenuFlyCursor : MonoBehaviour
         {
             followPosition = pointer;
             followVelocity = Vector2.zero;
-            rect.anchoredPosition = pointer;
+            rect.localPosition = pointer;
         }
     }
 
@@ -126,7 +126,10 @@ public class MenuFlyCursor : MonoBehaviour
         Vector2 hover = new Vector2(
             Mathf.Sin(hoverTime * hoverSpeed * 0.7f) * hoverAmplitude * 0.6f,
             Mathf.Sin(hoverTime * hoverSpeed) * hoverAmplitude);
-        rect.anchoredPosition = followPosition + hover * idleBlend;
+        // localPosition, not anchoredPosition: it is measured from the Canvas's own origin, which is
+        // exactly what ScreenPointToLocalPointInRectangle returns, so the fly lands on the pointer
+        // whatever pivot the Canvas ends up with and whatever this rect is anchored to.
+        rect.localPosition = followPosition + hover * idleBlend;
 
         if (speed > turnSpeedThreshold)
         {
