@@ -1,0 +1,9 @@
+newmtl Shoes_003_Slipper_Mat
+Ka 1.000 1.000 1.000
+Kd 0.800 0.800 0.800
+Ks 0.250 0.250 0.250
+Ns 25.0
+d 1.0
+illum 2
+map_Kd Shoes_003 Silpper Flip-flops_Albedo.jpg
+map_Bump Shoes_003 Silpper Flip-flops_Normal.jpg
