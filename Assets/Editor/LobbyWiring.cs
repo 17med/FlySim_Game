@@ -22,6 +22,18 @@ public static class LobbyWiring
     const string LobbyObjectName = "Lobby";
     const string MenuNetworkObjectName = "Menu_Network";
 
+    // The action bar was drawn with one box, for the room code, back when a code was the only way in.
+    // The player now sets the host's address and the port, so that box becomes the address box and a
+    // narrower port box is copied from it and dropped in beside it.
+    const string AddressInputName = "Address_Input";
+    const string LegacyCodeInputName = "RoomCode_Input";
+    const string PortInputName = "Port_Input";
+    const string AddressValueName = "Address_Value";
+    // The row is full at the width it was designed for, so the two boxes together take the width the
+    // single box had (18 of the 370 goes to the gap the layout group puts between them).
+    const float AddressWidth = 240f;
+    const float PortWidth = 110f;
+
     [MenuItem("Tools/Main Menu/Wire Lobby")]
     static void Wire()
     {
@@ -94,10 +106,12 @@ public static class LobbyWiring
 
         connector.createButton = RequireButton(scene, "Create_Button");
         connector.joinButton = RequireButton(scene, "Join_Button");
-        connector.roomCodeInput = RequireComponentOn<TMP_InputField>(scene, "RoomCode_Input");
+        connector.addressInput = EnsureAddressInput(scene);
+        connector.portInput = EnsurePortInput(connector.addressInput);
         connector.actionBarRoot = Require(scene, "L3_ActionBar");
         connector.roomRoot = Require(scene, "L5_Room");
         connector.codeValueText = RequireComponentOn<TMP_Text>(scene, "Code_Value");
+        connector.addressValueText = EnsureAddressValue(scene);
         connector.copyButton = RequireButton(scene, "Copy_Button");
         connector.leaveButton = RequireButton(scene, "Leave_Button");
         connector.statusText = RequireComponentOn<TMP_Text>(scene, "Status_TMP");
@@ -205,6 +219,166 @@ public static class LobbyWiring
             });
         }
         return slots.ToArray();
+    }
+
+    // ---- the address and port boxes -------------------------------------------------------------
+
+    // The box the room code used to go in. It keeps its place in the row and takes the host's address
+    // instead: a code still works in it (RoomCode decodes one), and so does ADDRESS:PORT pasted whole.
+    static TMP_InputField EnsureAddressInput(Scene scene)
+    {
+        GameObject box = FindInScene(scene, AddressInputName) ?? FindInScene(scene, LegacyCodeInputName);
+        if (box == null)
+        {
+            Debug.LogError($"Wire Lobby: no GameObject named {AddressInputName} (or {LegacyCodeInputName}) in {scene.name}.");
+            return null;
+        }
+        if (box.name != AddressInputName)
+        {
+            Undo.RecordObject(box, "Wire Lobby");
+            box.name = AddressInputName;
+        }
+
+        TMP_InputField input = box.GetComponent<TMP_InputField>();
+        if (input == null)
+        {
+            Debug.LogError($"Wire Lobby: {box.name} has no {nameof(TMP_InputField)} component.");
+            return null;
+        }
+
+        Undo.RecordObject(input, "Wire Lobby");
+        // The code box only let letters and digits through, which drops the dots out of an address.
+        input.contentType = TMP_InputField.ContentType.Standard;
+        input.characterLimit = 21; // 255.255.255.255:65535
+        // 54 point was room for four characters; an address has to fit in a box that also lost width
+        // to the port beside it.
+        input.pointSize = 26f;
+        SetPlaceholder(input, "HOST IP  ·  OR CODE");
+        SetPreferredWidth(box, AddressWidth);
+        ClearExplicitNavigation(input);
+        EditorUtility.SetDirty(input);
+        return input;
+    }
+
+    // Copied from the address box rather than built from nothing, so it carries the same well, rim
+    // and caret styling the bar was designed with.
+    static TMP_InputField EnsurePortInput(TMP_InputField addressInput)
+    {
+        if (addressInput == null)
+        {
+            return null;
+        }
+
+        GameObject box = ChildIn(addressInput.transform.parent.gameObject, PortInputName);
+        if (box == null)
+        {
+            box = CopyInto(addressInput.gameObject, addressInput.transform.parent.gameObject, PortInputName);
+            if (box == null)
+            {
+                return null;
+            }
+            // Beside the address it belongs to, not at the end of the row past QUIT.
+            box.transform.SetSiblingIndex(addressInput.transform.GetSiblingIndex() + 1);
+        }
+
+        TMP_InputField input = box.GetComponent<TMP_InputField>();
+        if (input == null)
+        {
+            Debug.LogError($"Wire Lobby: {PortInputName} has no {nameof(TMP_InputField)} component.");
+            return null;
+        }
+
+        Undo.RecordObject(input, "Wire Lobby");
+        input.contentType = TMP_InputField.ContentType.IntegerNumber;
+        input.characterLimit = 5; // 65535
+        input.pointSize = 26f;
+        // The connector fills this in with the last port used, or the default, when the menu starts.
+        input.text = "";
+        SetPlaceholder(input, "PORT");
+        SetPreferredWidth(box, PortWidth);
+        ClearExplicitNavigation(input);
+        EditorUtility.SetDirty(input);
+        return input;
+    }
+
+    // The room shows the code, which only reaches a player on the same LAN. The address and port
+    // underneath are what the other player types when the code cannot get them in.
+    static TMP_Text EnsureAddressValue(Scene scene)
+    {
+        GameObject block = Require(scene, "Code_Block");
+        if (block == null)
+        {
+            return null;
+        }
+
+        GameObject line = ChildIn(block, AddressValueName);
+        if (line == null)
+        {
+            line = CopyInto(ChildIn(block, "Code_Caption"), block, AddressValueName);
+            if (line == null)
+            {
+                return null;
+            }
+        }
+
+        TMP_Text text = line.GetComponent<TMP_Text>();
+        if (text == null)
+        {
+            Debug.LogError($"Wire Lobby: {AddressValueName} has no {nameof(TMP_Text)} component.");
+            return null;
+        }
+
+        Undo.RecordObject(text, "Wire Lobby");
+        // Big enough to read off a screen from across a room, without competing with the code above.
+        text.fontSize = 22f;
+        text.characterSpacing = 10f;
+        // Overwritten the moment a room opens; a sample keeps the line visible while laying the panel out.
+        text.text = "192.168.1.37:7777";
+
+        RectTransform rect = line.GetComponent<RectTransform>();
+        Undo.RecordObject(rect, "Wire Lobby");
+        // Under Code_Value, which is 64 tall and starts 24 down. Everything here hangs off the top.
+        rect.anchoredPosition = new Vector2(0f, -92f);
+        rect.sizeDelta = new Vector2(760f, 26f);
+
+        RectTransform blockRect = block.GetComponent<RectTransform>();
+        Undo.RecordObject(blockRect, "Wire Lobby");
+        blockRect.sizeDelta = new Vector2(blockRect.sizeDelta.x, 124f);
+
+        EditorUtility.SetDirty(text);
+        return text;
+    }
+
+    static void SetPlaceholder(TMP_InputField input, string hint)
+    {
+        if (input.placeholder is TMP_Text placeholder)
+        {
+            Undo.RecordObject(placeholder, "Wire Lobby");
+            placeholder.text = hint;
+            EditorUtility.SetDirty(placeholder);
+        }
+    }
+
+    static void SetPreferredWidth(GameObject target, float width)
+    {
+        LayoutElement element = target.GetComponent<LayoutElement>();
+        if (element == null)
+        {
+            Debug.LogWarning($"Wire Lobby: {target.name} has no {nameof(LayoutElement)}, so the row decides its width.");
+            return;
+        }
+        Undo.RecordObject(element, "Wire Lobby");
+        element.preferredWidth = width;
+        EditorUtility.SetDirty(element);
+    }
+
+    // The bar was wired up with explicit left and right neighbours, which now point past the box that
+    // was inserted between them: arrow keys and a gamepad are better off working it out themselves.
+    static void ClearExplicitNavigation(Selectable selectable)
+    {
+        Navigation navigation = selectable.navigation;
+        navigation.mode = Navigation.Mode.Automatic;
+        selectable.navigation = navigation;
     }
 
     static GameObject CopyInto(GameObject template, GameObject parent, string name)
