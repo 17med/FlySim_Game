@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 // everything in a small sphere in front of the camera is hit: spit targets (the cans and plates) rock
 // and flash as if spat on, and other objects with a Rigidbody are knocked away. The camera jolts,
 // harder on a hit, and a hit briefly freezes the hand (hit-stop), so the slap is felt landing.
+// While OldPersonPickup holds something, Attack throws it instead and no slap starts.
 // Put this on the old_person root next to OldPersonFPSController. The arm is posed in code on top of
 // the Idle/Walk clip (the model has no slap animation), like the controller's head tilt.
 // The hand's path is set in camera space, the way first-person weapons are, because what the player
@@ -21,8 +22,6 @@ public class OldPersonSlap : MonoBehaviour
     const float StrikeEasePower = 2f;
     // Share of the recovery the hand keeps travelling past the follow-through before it settles.
     const float OvershootShare = 0.4f;
-    // Elbow points down and out to his right (camera space), as in a natural slap.
-    const float ElbowOutward = 0.5f;
     // The hand travels right-to-left, so hit objects fly forward and to the left, not straight ahead.
     const float SidewaysPush = 0.5f;
     const int GizmoSegments = 16;
@@ -33,6 +32,8 @@ public class OldPersonSlap : MonoBehaviour
     [SerializeField] Animator animator;
     [Tooltip("Optional jolt on the view camera. Taken from View Camera if left empty.")]
     [SerializeField] CameraShake cameraShake;
+    [Tooltip("Optional. While it holds something, Attack throws instead of slapping. Found on this object if left empty.")]
+    [SerializeField] OldPersonPickup pickup;
     [Tooltip("Optional sound played where the slap lands. Leave empty for a silent slap.")]
     [SerializeField] AudioClip slapSound;
     [Tooltip("Distance from the camera to the centre of the hit sphere, in metres at the old person's own size (scales with him).")]
@@ -80,10 +81,8 @@ public class OldPersonSlap : MonoBehaviour
     // One object can have several colliders in the sphere; it is still hit only once per slap.
     readonly HashSet<object> hitThisSlap = new HashSet<object>();
     InputAction attackAction;
-    Transform upperArmBone;
-    Transform lowerArmBone;
-    Transform handBone;
-    bool hasArm;
+    // Null when the rig has no Humanoid right arm: the slap still hits, the arm just does not move.
+    ArmIK arm;
     // Seconds since the current slap started; negative while not slapping.
     float slapClock = -1f;
     // Seconds of hit-stop left; the slap clock stands still while this is positive.
@@ -111,6 +110,9 @@ public class OldPersonSlap : MonoBehaviour
         if (cameraShake == null)
             Debug.LogWarning("OldPersonSlap: no CameraShake on the view camera; slaps will not jolt the view.", this);
 
+        if (pickup == null)
+            pickup = GetComponent<OldPersonPickup>();
+
         FindArmBones();
     }
 
@@ -120,7 +122,9 @@ public class OldPersonSlap : MonoBehaviour
     {
         if (slapClock < 0f)
         {
-            if (attackAction.WasPressedThisFrame())
+            // The same button throws while he carries something; the throw takes the click instead.
+            bool isAttackTaken = pickup != null && pickup.ClaimsAttackButton;
+            if (attackAction.WasPressedThisFrame() && !isAttackTaken)
                 StartSlap();
             return;
         }
@@ -148,19 +152,12 @@ public class OldPersonSlap : MonoBehaviour
     // CameraShake's LateUpdate (execution order 200) adds its jolt, so the hand does not shake with the view.
     void LateUpdate()
     {
-        if (slapClock < 0f || !hasArm)
+        if (slapClock < 0f || arm == null)
             return;
         SlapPose pose = EvaluatePose(slapClock);
-
-        // Solved at full strength, then blended from the animated pose in local space, so the arm
-        // rises out of the Idle/Walk clip and drops back into it smoothly.
-        Quaternion animatedUpper = upperArmBone.localRotation;
-        Quaternion animatedLower = lowerArmBone.localRotation;
-        ReachArm(WristOnPath(pose.along), ElbowPole());
-        upperArmBone.localRotation = Quaternion.Slerp(animatedUpper, upperArmBone.localRotation, pose.weight);
-        lowerArmBone.localRotation = Quaternion.Slerp(animatedLower, lowerArmBone.localRotation, pose.weight);
-
-        RotateBone(handBone, pose.wrist * pose.weight, viewCamera.transform.up);
+        // ReachBlended rises out of the Idle/Walk clip and drops back into it with the weight.
+        arm.ReachBlended(WristOnPath(pose.along), ArmIK.RightElbowPole(viewCamera.transform), pose.weight);
+        arm.RotateHand(pose.wrist * pose.weight, viewCamera.transform.up);
     }
 
     SlapPose EvaluatePose(float time)
@@ -210,49 +207,6 @@ public class OldPersonSlap : MonoBehaviour
         float rest = 1f - along;
         Vector3 local = rest * rest * cockedWrist + 2f * rest * along * control + along * along * followThroughWrist;
         return viewCamera.transform.TransformPoint(local);
-    }
-
-    Vector3 ElbowPole() => -viewCamera.transform.up + viewCamera.transform.right * ElbowOutward;
-
-    // Two-bone IK: bends the elbow toward the pole so the wrist reaches the target. World-space
-    // rotations, so the rig's bone axes do not matter.
-    void ReachArm(Vector3 target, Vector3 pole)
-    {
-        Vector3 shoulder = upperArmBone.position;
-        Vector3 toTarget = target - shoulder;
-        if (toTarget.sqrMagnitude < 1e-8f)
-            return;
-        float upperLength = Vector3.Distance(shoulder, lowerArmBone.position);
-        float lowerLength = Vector3.Distance(lowerArmBone.position, handBone.position);
-        // Clamped to what the arm can span, so an out-of-reach target straightens the arm toward it.
-        float distance = Mathf.Clamp(toTarget.magnitude,
-            Mathf.Abs(upperLength - lowerLength) + 0.001f, upperLength + lowerLength - 0.001f);
-        Vector3 axis = toTarget.normalized;
-
-        // Law of cosines: how far along the shoulder-to-target line the elbow sits, and how far off it.
-        float along = (upperLength * upperLength - lowerLength * lowerLength + distance * distance) / (2f * distance);
-        float offset = Mathf.Sqrt(Mathf.Max(0f, upperLength * upperLength - along * along));
-        Vector3 bend = Vector3.ProjectOnPlane(pole, axis);
-        // Pole in line with the arm: keep the elbow on the side it is already on.
-        if (bend.sqrMagnitude < 1e-6f)
-            bend = Vector3.ProjectOnPlane(lowerArmBone.position - shoulder, axis);
-        Vector3 elbow = shoulder + axis * along + bend.normalized * offset;
-
-        AimBone(upperArmBone, lowerArmBone.position, elbow);
-        // Read after the upper arm moved, so the forearm is aimed from the elbow's new position.
-        AimBone(lowerArmBone, handBone.position, shoulder + axis * distance);
-    }
-
-    // Rotates a bone around its own joint so its child moves from where it is to where it is wanted.
-    static void AimBone(Transform bone, Vector3 childNow, Vector3 childWanted)
-    {
-        bone.rotation = Quaternion.FromToRotation(childNow - bone.position, childWanted - bone.position) * bone.rotation;
-    }
-
-    // On top of the animated pose, around a world axis, so it works whatever way the bone's local axes point.
-    static void RotateBone(Transform bone, float degrees, Vector3 axis)
-    {
-        bone.rotation = Quaternion.AngleAxis(degrees, axis) * bone.rotation;
     }
 
     void StartSlap()
@@ -329,16 +283,9 @@ public class OldPersonSlap : MonoBehaviour
     {
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
-        // GetBoneTransform only works on a Humanoid rig; old_person.fbx is imported as Humanoid.
-        if (animator != null && animator.isHuman)
-        {
-            upperArmBone = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
-            lowerArmBone = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
-            handBone = animator.GetBoneTransform(HumanBodyBones.RightHand);
-        }
-        hasArm = upperArmBone != null && lowerArmBone != null && handBone != null;
+        arm = ArmIK.FindRightArm(animator);
         // Fails open: the arm pose is visual only; the slap still hits without it.
-        if (!hasArm)
+        if (arm == null)
             Debug.LogWarning("OldPersonSlap: no Humanoid right arm (upper arm, forearm, hand) found on the Animator; the slap will hit but the arm will not move.", this);
     }
 
