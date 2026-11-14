@@ -8,7 +8,7 @@
 /[Rr]ecordings/
 /[Bb]uild/
 /[Bb]uilds/
-
+assets.txt
 # IDE and generated project files.
 .vs/
 .vscode/

@@ -9,7 +9,7 @@ EditorBuildSettings:
     path: Assets/Scenes/MainMenu.unity
     guid: baa81f47c06ff5954b58d600ee4b6a59
   - enabled: 1
-    path: Assets/Scenes/Kitchen.unity
-    guid: b66d27b9e928495768629c272cd705fe
+    path: Assets/Scenes/Kitchen_online.unity
+    guid: 7d1368b30c944111a8342b116f31d3fb
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
