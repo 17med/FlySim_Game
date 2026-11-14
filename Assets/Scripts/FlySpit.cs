@@ -131,6 +131,9 @@ public class FlySpit : MonoBehaviour
     // through the fly and spitting along it would land beside the crosshair; aiming at the point under
     // the crosshair instead makes the shot land on it.
     public bool IsAiming { get; set; }
+    // Raised on every shot this fly fires: muzzle position, velocity, size, and whether it was a Big
+    // Shot. FlySpitNetwork sends it to the other players.
+    public event System.Action<Vector3, Vector3, float, bool> Fired;
     // For a HUD: shots available now, the full amount, and how far (0 to 1) the next shot is refilled.
     public int ShotsLeft => ammo.ShotsLeft;
     public int MaxShots => ammo.MaxShots;
@@ -390,15 +393,41 @@ public class FlySpit : MonoBehaviour
         // than an angle off the combined path.
         Vector3 velocity = direction * spitSpeed + fly.FlyVelocity * velocityInheritance;
         float size = isBigShot ? spitSize * bigShotSizeMultiplier : spitSize;
-        projectilePool.Get().Launch(MuzzlePosition(), velocity, transform, size);
+        Vector3 position = MuzzlePosition();
+        LaunchBlob(position, velocity, size, true);
+        PlayShotEffects(isBigShot);
+        // The final position, velocity and size, after the random spread, so other players' copies
+        // fly the same path instead of rolling their own spread.
+        Fired?.Invoke(position, velocity, size, isBigShot);
+        // On release, not on the click: the shot has already been aimed, so the jolt never moves it.
+        if (cameraShake != null)
+            cameraShake.Shake(isBigShot ? bigShotShake : shotShake);
+    }
 
+    // Another player's shot, shown on this machine: same blob, burst, sound and spit animation, but the
+    // blob cannot hit anything (the shooter's own blob does that) and nothing here touches ammo or HUD.
+    // Works with this component disabled, which is how it sits on another player's fly.
+    public void ShowRemoteShot(Vector3 position, Vector3 velocity, float size, bool isBigShot)
+    {
+        LaunchBlob(position, velocity, size, false);
+        PlayShotEffects(isBigShot);
+        if (hasSpitTrigger)
+            animator.SetTrigger(SpitAnimParameter);
+    }
+
+    void LaunchBlob(Vector3 position, Vector3 velocity, float size, bool hitsTargets)
+    {
+        SpitProjectile blob = projectilePool.Get();
+        blob.HitsTargets = hitsTargets;
+        blob.Launch(position, velocity, transform, size);
+    }
+
+    void PlayShotEffects(bool isBigShot)
+    {
         PlayMuzzleBurst(isBigShot ? bigBurstScale : 1f);
         AudioSource sound = isBigShot && bigSpitSound != null ? bigSpitSound : spitSound;
         if (sound != null)
             sound.Play();
-        // On release, not on the click: the shot has already been aimed, so the jolt never moves it.
-        if (cameraShake != null)
-            cameraShake.Shake(isBigShot ? bigShotShake : shotShake);
     }
 
     // The burst is rescaled before each play; particles from a previous burst still in the air are

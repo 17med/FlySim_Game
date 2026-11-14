@@ -15,6 +15,14 @@ public class OldPersonHoldArm : MonoBehaviour
 {
     enum Phase { None, Reach, Carry, WindUp, Swing, Recover }
 
+    // What OldPersonPickup asked the arm to do. The numbers are sent over the network.
+    public enum Command { Reach = 0, Carry = 1, Throw = 2, Release = 3 }
+
+    // Raised for every command the arm carries out, with the target and its extent for Reach (null and
+    // 0 otherwise). OldPersonArmNetwork replays them on other players' copies of the old man, where
+    // the timed phases (swing, recover) then run by themselves exactly as they do here.
+    public event System.Action<Command, Rigidbody, float> Commanded;
+
     [Tooltip("The first-person camera. Found among the children if left empty.")]
     [SerializeField] Camera viewCamera;
     [Tooltip("The old person's Animator (Humanoid rig), used to find the right arm bones. Found automatically if left empty.")]
@@ -101,11 +109,20 @@ public class OldPersonHoldArm : MonoBehaviour
         target = body;
         targetExtent = extent;
         BeginPhase(Phase.Reach);
+        Commanded?.Invoke(Command.Reach, body, extent);
     }
 
-    public void Carry() => BeginPhase(Phase.Carry);
+    public void Carry()
+    {
+        BeginPhase(Phase.Carry);
+        Commanded?.Invoke(Command.Carry, null, 0f);
+    }
 
-    public void Throw() => BeginPhase(Phase.WindUp);
+    public void Throw()
+    {
+        BeginPhase(Phase.WindUp);
+        Commanded?.Invoke(Command.Throw, null, 0f);
+    }
 
     // Drops the arm back into the animated pose from wherever it is, e.g. when the object is put down.
     // Ignored while already recovering, so letting go at the end of the throw does not restart it.
@@ -114,6 +131,7 @@ public class OldPersonHoldArm : MonoBehaviour
         if (phase == Phase.None || phase == Phase.Recover)
             return;
         BeginPhase(Phase.Recover);
+        Commanded?.Invoke(Command.Release, null, 0f);
     }
 
     // True once, on the first call after the swing reaches its release point.

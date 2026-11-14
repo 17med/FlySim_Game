@@ -57,6 +57,9 @@ public class SpitProjectile : MonoBehaviour
 
     // Read by FlySpit off the prefab, to aim the arc so it comes down on the crosshair.
     public float Gravity => gravity;
+    // False on a copy of another player's shot: it flies and splashes the same, but the shooter's own
+    // blob is the one that hits, so a hit counts once and not once per machine. Set before Launch.
+    public bool HitsTargets { get; set; } = true;
 
     readonly RaycastHit[] sweepHits = new RaycastHit[MaxSweepHits];
     IObjectPool<SpitProjectile> pool;
@@ -263,6 +266,8 @@ public class SpitProjectile : MonoBehaviour
     {
         // GetComponentInParent, not GetComponent: a target's collider is often on a child of the
         // object that actually reacts.
+        if (!HitsTargets)
+            return;
         ISpitHittable target = impact.collider.GetComponentInParent<ISpitHittable>();
         target?.OnSpitHit(new SpitHit
         {

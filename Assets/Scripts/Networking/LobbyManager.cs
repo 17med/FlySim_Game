@@ -449,18 +449,23 @@ public class LobbyManager : NetworkBehaviour
         {
             return;
         }
-        if (!Application.CanStreamedLevelBeLoaded(GameSceneManager.KitchenScene))
+        if (!Application.CanStreamedLevelBeLoaded(GameSceneManager.KitchenOnlineScene))
         {
-            Debug.LogError($"{nameof(LobbyManager)}: scene '{GameSceneManager.KitchenScene}' is not in the build scene list, so the game cannot start. Add it in File > Build Profiles > Scene List.");
+            Debug.LogError($"{nameof(LobbyManager)}: scene '{GameSceneManager.KitchenOnlineScene}' is not in the build scene list, so the game cannot start. Add it in File > Build Profiles > Scene List.");
             return;
         }
 
+        // The host also keeps everyone's role, for KitchenSpawner to hand out bodies by.
+        foreach (LobbyMember member in members)
+        {
+            GameSession.SetRole(member.ClientId, member.Role);
+        }
         // Every machine stores its own role first: once the scene load starts, this lobby is gone and
         // the Kitchen has nothing left to ask.
         HandOverToKitchenRpc();
         // Netcode's scene manager (not GameSceneManager) loads the Kitchen, because the clients have
         // to be taken along and kept in step with the host.
-        NetworkManager.SceneManager.LoadScene(GameSceneManager.KitchenScene, LoadSceneMode.Single);
+        NetworkManager.SceneManager.LoadScene(GameSceneManager.KitchenOnlineScene, LoadSceneMode.Single);
     }
 
     [Rpc(SendTo.Everyone)]

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 // Which side of the kitchen a player is on. The number matters: it is sent over the network and
 // stored in a NetworkList, so reordering these would swap everyone's role mid-release.
 public enum PlayerRole
@@ -19,9 +21,24 @@ public static class GameSession
     // own, which is the case single player code paths should keep working for.
     public static bool StartedFromLobby { get; set; }
 
+    // Host only: every player's role by client id. LocalRole is all a client needs, but the host
+    // spawns everyone's body (KitchenSpawner) after the lobby that knew the roster is gone.
+    static readonly Dictionary<ulong, PlayerRole> roles = new Dictionary<ulong, PlayerRole>();
+
+    public static void SetRole(ulong clientId, PlayerRole role)
+    {
+        roles[clientId] = role;
+    }
+
+    public static bool TryGetRole(ulong clientId, out PlayerRole role)
+    {
+        return roles.TryGetValue(clientId, out role);
+    }
+
     public static void Reset()
     {
         LocalRole = PlayerRole.Flyer;
         StartedFromLobby = false;
+        roles.Clear();
     }
 }

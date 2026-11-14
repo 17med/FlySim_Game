@@ -89,6 +89,12 @@ public class OldPersonSlap : MonoBehaviour
     float hitStopClock;
     bool hasStruck;
 
+    // Raised when this old man starts a slap. OldPersonArmNetwork sends it to the other players.
+    public event System.Action Slapped;
+    // True on a copy of another player's old man: the slap is only shown, never started from this
+    // machine's mouse and never hits anything (the owner's copy does the hitting, once).
+    public bool IsMirror { get; set; }
+
     void Awake()
     {
         // Throws if the action is missing: a slap button that silently does nothing is worse than a clear error.
@@ -122,6 +128,8 @@ public class OldPersonSlap : MonoBehaviour
     {
         if (slapClock < 0f)
         {
+            if (IsMirror)
+                return;
             // The same button throws while he carries something; the throw takes the click instead.
             bool isAttackTaken = pickup != null && pickup.ClaimsAttackButton;
             if (attackAction.WasPressedThisFrame() && !isAttackTaken)
@@ -140,7 +148,8 @@ public class OldPersonSlap : MonoBehaviour
         if (!hasStruck && slapClock >= windUpTime + strikeTime * contact)
         {
             hasStruck = true;
-            Strike();
+            if (!IsMirror)
+                Strike();
         }
         // A new slap can only start once this one has finished, so the duration is the cooldown.
         if (slapClock >= windUpTime + strikeTime + recoverTime)
@@ -209,11 +218,15 @@ public class OldPersonSlap : MonoBehaviour
         return viewCamera.transform.TransformPoint(local);
     }
 
+    // Another player's slap, shown on this machine's copy of their old man.
+    public void ShowRemoteSlap() => StartSlap();
+
     void StartSlap()
     {
         slapClock = 0f;
         hitStopClock = 0f;
         hasStruck = false;
+        Slapped?.Invoke();
     }
 
     void Strike()

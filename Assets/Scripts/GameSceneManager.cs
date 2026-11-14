@@ -13,6 +13,8 @@ public class GameSceneManager : MonoBehaviour
     // Both must stay listed in File > Build Profiles > Scene List; LoadScene says so when one is missing.
     public const string MainMenuScene = "MainMenu";
     public const string KitchenScene = "Kitchen";
+    // The lobby's game: the same kitchen with no bodies placed, where KitchenSpawner spawns one per player.
+    public const string KitchenOnlineScene = "Kitchen_online";
 
     static GameSceneManager instance;
 

@@ -1218,6 +1218,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3385633757200871507}
   - component: {fileID: 7183152556154198827}
+  - component: {fileID: 7515990406473907618}
   m_Layer: 0
   m_Name: fly (2)
   m_TagString: Untagged
@@ -1263,6 +1264,38 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!114 &7515990406473907618
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 614409299318004500}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8d0727d5ae3244e3b569694d3912374, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.Components.NetworkAnimator
+  ShowTopMostFoldoutHeaderGroup: 1
+  NetworkAnimatorExpanded: 0
+  AuthorityMode: 1
+  m_Animator: {fileID: 7183152556154198827}
+  TransitionStateInfoList: []
+  AnimatorParameterEntries:
+    ParameterEntries:
+    - name: stateanim
+      NameHash: -1385021656
+      Synchronize: 1
+      ParameterType: 3
+    - name: emotnb
+      NameHash: -534319822
+      Synchronize: 1
+      ParameterType: 3
+    - name: flyspeed
+      NameHash: -627505882
+      Synchronize: 1
+      ParameterType: 1
+  AnimatorParametersExpanded: 0
 --- !u!1 &774524220590586778
 GameObject:
   m_ObjectHideFlags: 0
@@ -3376,6 +3409,9 @@ GameObject:
   m_Component:
   - component: {fileID: 8203619415184745260}
   - component: {fileID: 4407541096067956293}
+  - component: {fileID: 5994639112007724640}
+  - component: {fileID: 4952069765361306902}
+  - component: {fileID: 4170307769745031335}
   m_Layer: 0
   m_Name: fly
   m_TagString: Untagged
@@ -3416,6 +3452,70 @@ MonoBehaviour:
   holdTime: 0.5
   fadeDuration: 1.5
   sortingOrder: 1000
+--- !u!114 &5994639112007724640
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2433297912782567719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  m_InScenePlacedDisabledByDefault: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  m_InScenePlaced: 0
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
+--- !u!114 &4952069765361306902
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2433297912782567719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7abd648eebfc984538d6e22e4ced55ab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::OwnerOnlyControls
+  ShowTopMostFoldoutHeaderGroup: 1
+  ownerOnly:
+  - {fileID: 3698835378948886326}
+  - {fileID: 5792047532563736642}
+  - {fileID: 80350247649844588}
+  - {fileID: 6393241807114636810}
+  - {fileID: 8513194898276064735}
+  - {fileID: 2710838793700131298}
+  - {fileID: 1961676763775794988}
+  - {fileID: 183008136669189248}
+  - {fileID: 1220738853250852265}
+  - {fileID: 4374765357930222248}
+--- !u!114 &4170307769745031335
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2433297912782567719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ca65dd5fef3cbb498dcc5fd0c2743fa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlySpitNetwork
+  ShowTopMostFoldoutHeaderGroup: 1
 --- !u!1 &2573173314928979463
 GameObject:
   m_ObjectHideFlags: 0
@@ -12331,6 +12431,7 @@ GameObject:
   - component: {fileID: 183008136669189248}
   - component: {fileID: 1220738853250852265}
   - component: {fileID: 4374765357930222248}
+  - component: {fileID: 5605364286249622796}
   m_Layer: 0
   m_Name: fly (1)
   m_TagString: Untagged
@@ -12499,6 +12600,52 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HideCursorWhileEnabled
   lockCursor: 0
+--- !u!114 &5605364286249622796
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8944188680870611209}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e96cb6065543e43c4a752faaa1468eb1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.Components.NetworkTransform
+  ShowTopMostFoldoutHeaderGroup: 1
+  NetworkTransformExpanded: 0
+  AutoOwnerAuthorityTickOffset: 1
+  PositionInterpolationType: 0
+  RotationInterpolationType: 0
+  ScaleInterpolationType: 0
+  PositionLerpSmoothing: 1
+  PositionMaxInterpolationTime: 0.1
+  RotationLerpSmoothing: 1
+  RotationMaxInterpolationTime: 0.1
+  ScaleLerpSmoothing: 1
+  ScaleMaxInterpolationTime: 0.1
+  AuthorityMode: 1
+  TickSyncChildren: 0
+  UseUnreliableDeltas: 0
+  SyncPositionX: 1
+  SyncPositionY: 1
+  SyncPositionZ: 1
+  SyncRotAngleX: 1
+  SyncRotAngleY: 1
+  SyncRotAngleZ: 1
+  SyncScaleX: 0
+  SyncScaleY: 0
+  SyncScaleZ: 0
+  PositionThreshold: 0.001
+  RotAngleThreshold: 0.01
+  ScaleThreshold: 0.01
+  UseQuaternionSynchronization: 0
+  UseQuaternionCompression: 0
+  UseHalfFloatPrecision: 0
+  InLocalSpace: 1
+  SwitchTransformSpaceWhenParented: 0
+  Interpolate: 1
+  SlerpPosition: 0
 --- !u!1 &8960304764851288954
 GameObject:
   m_ObjectHideFlags: 0
