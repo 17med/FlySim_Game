@@ -49,8 +49,8 @@ public class LobbyManager : NetworkBehaviour
 
     public static LobbyManager Instance { get; private set; }
 
-    [Tooltip("Flyers needed before the host can start. The lobby panel says 2; lower it to test alone.")]
-    [SerializeField] int minFlyersToStart = 2;
+    [Tooltip("Flyers needed before the host can start. One human plus this many flyers is a full match; the lobby panel's Min_Note label states it too.")]
+    [SerializeField] int minFlyersToStart = 1;
 
     // The roster, in join order. Server writes, everyone reads.
     readonly NetworkList<LobbyMember> members = new NetworkList<LobbyMember>();
