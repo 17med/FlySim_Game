@@ -14,6 +14,9 @@ public class Black : MonoBehaviour
     [Tooltip("Higher draws on top of other canvases")]
     public int sortingOrder = 1000;
 
+    [Tooltip("Optional sound played as the fade starts")]
+    [SerializeField] AudioSource fadeSound;
+
     GameObject overlayCanvas;
     Image blackImage;
     Coroutine fadeRoutine;
@@ -68,6 +71,8 @@ public class Black : MonoBehaviour
     {
         overlayCanvas.SetActive(true);
         SetAlpha(1f);
+        if (fadeSound != null)
+            fadeSound.Play();
 
         yield return new WaitForSeconds(holdTime);
 

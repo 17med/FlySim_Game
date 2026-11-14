@@ -1,48 +1,76 @@
 using UnityEngine;
 
-// Loops the walk or fly sound to match FlyController's state: walking plays the walk sound, flying and
-// hovering play the fly sound, idle is silent. An empty sound slot means silence for that state.
+// Plays the walk or fly sound to match the fly's movement: walking plays a walk sound, flying and
+// hovering play a fly sound, idle is silent. Each state can hold several sounds; a random one is
+// picked whenever the state changes or the last one ends, so short clips do not repeat as an
+// obvious loop. An empty list means silence for that state.
+// Runs on every copy of the fly, so other players hear it too. The owner's copy reads FlyController;
+// on another player's copy FlyController is switched off (OwnerOnlyControls), so the state is read
+// from the Animator's "stateanim" instead, which NetworkAnimator carries over from the owner.
 [RequireComponent(typeof(FlyController), typeof(AudioSource))]
 public class FlyAudio : MonoBehaviour
 {
-    [SerializeField] AudioClip walkSound;
+    [SerializeField] AudioClip[] walkSounds = new AudioClip[0];
     [SerializeField, Range(0f, 1f)] float walkVolume = 1f;
-    [SerializeField] AudioClip flySound;
+    [SerializeField] AudioClip[] flySounds = new AudioClip[0];
     [SerializeField, Range(0f, 1f)] float flyVolume = 1f;
 
+    static readonly AudioClip[] Silence = new AudioClip[0];
+
     FlyController fly;
+    Animator animator;
     AudioSource source;
+    // The list the current clip came from, so a change of state is noticed.
+    AudioClip[] playingSounds;
 
     void Awake()
     {
         fly = GetComponent<FlyController>();
+        animator = GetComponentInChildren<Animator>();
         source = GetComponent<AudioSource>();
-        source.loop = true;
+        // Not looped: a new random clip is picked when one ends.
+        source.loop = false;
         source.playOnAwake = false;
     }
 
     void Update()
     {
-        (AudioClip clip, float volume) = fly.State switch
+        (AudioClip[] sounds, float volume) = CurrentState() switch
         {
-            FlyController.MovementState.Walking => (walkSound, walkVolume),
-            FlyController.MovementState.Flying => (flySound, flyVolume),
-            _ => (null, 0f),
+            FlyController.MovementState.Walking => (walkSounds, walkVolume),
+            FlyController.MovementState.Flying => (flySounds, flyVolume),
+            _ => (Silence, 0f),
         };
-        PlayLooping(clip, volume);
+        source.volume = volume;
+        // Flat on the owner's copy: the orbit camera sits several units back, where a positional
+        // sound would be faint. Other players hear the fly from where it is.
+        source.spatialBlend = fly.enabled ? 0f : 1f;
+        Play(sounds);
     }
 
-    // Restarts only when the clip changes, so a looping sound is not cut off every frame.
-    void PlayLooping(AudioClip clip, float volume)
+    FlyController.MovementState CurrentState()
     {
-        source.volume = volume;
-        if (source.clip == clip && (clip == null || source.isPlaying))
+        // Fails open: with no Animator another player's fly is simply silent.
+        if (fly.enabled || animator == null)
+            return fly.State;
+        return (FlyController.MovementState)animator.GetInteger(FlyController.StateAnimParameter);
+    }
+
+    // Starts a new random clip only when the state changes or the current clip has ended, so a
+    // playing sound is not cut off every frame.
+    void Play(AudioClip[] sounds)
+    {
+        bool isSameState = sounds == playingSounds;
+        if (isSameState && (source.isPlaying || sounds.Length == 0))
             return;
 
-        source.clip = clip;
-        if (clip == null)
+        playingSounds = sounds;
+        if (sounds.Length == 0)
+        {
             source.Stop();
-        else
-            source.Play();
+            return;
+        }
+        source.clip = sounds[Random.Range(0, sounds.Length)];
+        source.Play();
     }
 }

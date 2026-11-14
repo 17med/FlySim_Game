@@ -45,7 +45,7 @@ public static class KitchenOnlineWiring
             return;
         }
 
-        bool prefabsWired = WirePrefab(FlyPrefabPath, typeof(FlyController), typeof(FlySpitNetwork))
+        bool prefabsWired = WirePrefab(FlyPrefabPath, typeof(FlyController), typeof(FlySpitNetwork), typeof(FlyKnockbackNetwork))
                             && WirePrefab(HumanPrefabPath, typeof(OldPersonFPSController), typeof(OldPersonArmNetwork))
                             && RegisterPrefabs();
         if (!prefabsWired)
@@ -64,8 +64,8 @@ public static class KitchenOnlineWiring
 
     // NetworkObject on the root, NetworkTransform on the object the controller moves (the fly's
     // controller sits on a child), NetworkAnimator on the model's Animator, OwnerOnlyControls, and
-    // the script that shows this body's actions to the other players.
-    static bool WirePrefab(string path, Type controllerType, Type actionsNetworkType)
+    // the scripts that pass this body's actions (and, for the fly, the hits it takes) between players.
+    static bool WirePrefab(string path, Type controllerType, params Type[] actionsNetworkTypes)
     {
         GameObject root = PrefabUtility.LoadPrefabContents(path);
         try
@@ -81,9 +81,12 @@ public static class KitchenOnlineWiring
             WireTransform(EnsureComponent<NetworkTransform>(controller.gameObject), controller.gameObject != root);
             WireAnimator(root, controller, path);
             FillOwnerOnly(EnsureComponent<OwnerOnlyControls>(root));
-            if (root.GetComponent(actionsNetworkType) == null)
+            foreach (Type actionsNetworkType in actionsNetworkTypes)
             {
-                root.AddComponent(actionsNetworkType);
+                if (root.GetComponent(actionsNetworkType) == null)
+                {
+                    root.AddComponent(actionsNetworkType);
+                }
             }
 
             PrefabUtility.SaveAsPrefabAsset(root, path, out bool saved);

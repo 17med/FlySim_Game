@@ -103,6 +103,10 @@ public class FlySpit : MonoBehaviour
     [SerializeField, Range(1f, 5f)] float bigBurstScale = 2f;
     [Tooltip("Played on a Big Shot instead of Spit Sound. Spit Sound is used if left empty.")]
     [SerializeField] AudioSource bigSpitSound;
+    [Tooltip("Played when the button goes down to start a shot; stopped when the shot leaves or is cancelled. Optional.")]
+    [SerializeField] AudioSource chargeSound;
+    [Tooltip("Played once when the hold becomes a Big Shot; stopped when the shot leaves or is cancelled. Optional.")]
+    [SerializeField] AudioSource fullChargeSound;
 
     [Header("Lunge Animation")]
     // Short on purpose: the blob only leaves once the windup ends, so this is the delay between the
@@ -156,6 +160,8 @@ public class FlySpit : MonoBehaviour
     // The button went down while a shot was allowed and has not been let go yet.
     bool isHolding;
     float holdTime;
+    // Full Charge Sound has played for the current hold, so it plays once rather than every frame.
+    bool hasPlayedFullCharge;
     // The current shot's lunge: its size (1 normal, Big Lunge Scale for a Big Shot), its phase lengths,
     // and how far back the fly already was when it started, so the windup carries on from the charge
     // pose instead of jumping back to rest first.
@@ -296,8 +302,8 @@ public class FlySpit : MonoBehaviour
         if (!isHolding)
             return;
 
-        // Letting go of Aim while charging cancels the shot and spends nothing.
-        if (!IsAiming)
+        // Letting go of Aim, or being knocked, while charging cancels the shot and spends nothing.
+        if (!IsAiming || fly.IsStunned)
         {
             EndHold();
             return;
@@ -320,7 +326,8 @@ public class FlySpit : MonoBehaviour
 
     void TryStartHold()
     {
-        if (!IsAiming || cooldownLeft > 0f)
+        // A knocked fly is tumbling through the air and cannot spit until the stun wears off.
+        if (!IsAiming || cooldownLeft > 0f || fly.IsStunned)
             return;
         if (!ammo.CanSpend(1))
         {
@@ -329,12 +336,20 @@ public class FlySpit : MonoBehaviour
         }
         isHolding = true;
         holdTime = 0f;
+        if (chargeSound != null)
+            chargeSound.Play();
     }
 
     void EndHold()
     {
         isHolding = false;
         holdTime = 0f;
+        hasPlayedFullCharge = false;
+        // Stopped on release too, not only on cancel: the spit sound takes over from here.
+        if (chargeSound != null)
+            chargeSound.Stop();
+        if (fullChargeSound != null)
+            fullChargeSound.Stop();
         if (spitInterface != null)
             spitInterface.ClearCharge();
     }
@@ -342,6 +357,9 @@ public class FlySpit : MonoBehaviour
     // Runs every frame while fully charged; the camera rumble only lasts the frame it is asked for.
     void PlayChargeFeedback()
     {
+        if (!hasPlayedFullCharge && fullChargeSound != null)
+            fullChargeSound.Play();
+        hasPlayedFullCharge = true;
         if (cameraShake != null)
             cameraShake.Rumble(chargeRumble);
         if (spitInterface != null)
@@ -426,8 +444,12 @@ public class FlySpit : MonoBehaviour
     {
         PlayMuzzleBurst(isBigShot ? bigBurstScale : 1f);
         AudioSource sound = isBigShot && bigSpitSound != null ? bigSpitSound : spitSound;
-        if (sound != null)
-            sound.Play();
+        if (sound == null)
+            return;
+        // Flat for the shooter (this component is only enabled on the owner's fly), whose camera sits
+        // too far back for a positional sound; positional for everyone else.
+        sound.spatialBlend = enabled ? 0f : 1f;
+        sound.Play();
     }
 
     // The burst is rescaled before each play; particles from a previous burst still in the air are

@@ -36,12 +36,18 @@ public class OldPersonSlap : MonoBehaviour
     [SerializeField] OldPersonPickup pickup;
     [Tooltip("Optional sound played where the slap lands. Leave empty for a silent slap.")]
     [SerializeField] AudioClip slapSound;
+    [Tooltip("Optional sound of the hand swinging, played at the start of every slap, hit or miss, on every player's copy.")]
+    [SerializeField] AudioClip swingSound;
     [Tooltip("Distance from the camera to the centre of the hit sphere, in metres at the old person's own size (scales with him).")]
     [SerializeField] float reach = 0.8f;
     [Tooltip("Radius of the hit sphere, in metres at the old person's own size (scales with him).")]
     [SerializeField] float hitRadius = 0.35f;
     [Tooltip("Impulse given to what is hit. The default spit hits with about 1.")]
     [SerializeField] float slapForce = 3f;
+    [Tooltip("Speed, in units per second, a slapped fly is flung away with. The fly is then stunned (FlyController's Knocked settings).")]
+    [SerializeField, Min(0f)] float flyKnockSpeed = 50f;
+    [Tooltip("Extra upward speed given to a slapped fly, so it flies off in an arc instead of into the floor.")]
+    [SerializeField, Min(0f)] float flyKnockLift = 20f;
     [SerializeField] LayerMask hitLayers = ~0;
 
     [Header("Timing (seconds)")]
@@ -226,6 +232,10 @@ public class OldPersonSlap : MonoBehaviour
         slapClock = 0f;
         hitStopClock = 0f;
         hasStruck = false;
+        // At the camera, so the slapper hears it at full volume and the others hear it from his head.
+        // viewCamera is null only when Awake disabled this component; a remote slap can still arrive.
+        if (swingSound != null && viewCamera != null)
+            AudioSource.PlayClipAtPoint(swingSound, viewCamera.transform.position);
         Slapped?.Invoke();
     }
 
@@ -259,6 +269,16 @@ public class OldPersonSlap : MonoBehaviour
 
     void HitCollider(Collider touchedCollider, Vector3 center, Vector3 direction)
     {
+        // A fly has no Rigidbody (it moves with a CharacterController), so it is flung through its own
+        // knockback instead of a physics push. Counted as a hit, so the slap jolts and hit-stops.
+        FlyKnockbackNetwork fly = touchedCollider.GetComponentInParent<FlyKnockbackNetwork>();
+        if (fly != null)
+        {
+            if (hitThisSlap.Add(fly))
+                fly.Knock(direction * flyKnockSpeed + Vector3.up * flyKnockLift);
+            return;
+        }
+
         // Same lookup as SpitProjectile: a target's collider is often on a child of the target.
         // ISpitHittable is the project's "something that reacts to a hit" contract; a slap reuses it
         // so the cans and plates react without a second, slap-only copy of SpitTarget.

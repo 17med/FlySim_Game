@@ -55,6 +55,15 @@ public class OldPersonPickup : MonoBehaviour
     [Tooltip("Seconds after letting go before the object can bump into the old person again, so it does not hit him on the way out.")]
     [SerializeField, Min(0f)] float ownCollisionDelay = 0.3f;
 
+    // Only heard by this player: pick up, drop and throw are not sent to the other players.
+    [Header("Sounds (optional)")]
+    [Tooltip("Played when the object reaches his hand.")]
+    [SerializeField] AudioClip pickUpSound;
+    [Tooltip("Played when E puts the object down.")]
+    [SerializeField] AudioClip dropSound;
+    [Tooltip("Played when the throw swing starts.")]
+    [SerializeField] AudioClip throwSound;
+
     [Header("Aim (hold Aim while carrying)")]
     [Tooltip("The field of view is multiplied by this while aiming. 0.75 turns 60° into 45°.")]
     [SerializeField, Range(0.3f, 1f)] float aimFovMultiplier = 0.75f;
@@ -202,7 +211,10 @@ public class OldPersonPickup : MonoBehaviour
         if (isThrowing)
             return;
         if (isHolding)
+        {
             Release();
+            PlaySound(dropSound);
+        }
         else if (isReaching)
             CancelReach();
         else
@@ -238,6 +250,7 @@ public class OldPersonPickup : MonoBehaviour
 
     void StartThrow()
     {
+        PlaySound(throwSound);
         if (!UsesHand)
         {
             Throw();
@@ -310,6 +323,14 @@ public class OldPersonPickup : MonoBehaviour
         body.interpolation = RigidbodyInterpolation.Interpolate;
         heldExtraDistance = LargestExtent(heldColliders) / Scale;
         SetCollidesWithOwnBody(heldColliders, false);
+        PlaySound(pickUpSound);
+    }
+
+    // At the camera, where this player's AudioListener is, so it plays at full volume.
+    void PlaySound(AudioClip clip)
+    {
+        if (clip != null)
+            AudioSource.PlayClipAtPoint(clip, viewCamera.transform.position);
     }
 
     // Lets go where the object is, keeping the motion it has; Throw sets a launch speed on top.

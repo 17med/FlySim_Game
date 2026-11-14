@@ -36,13 +36,14 @@ public class FlyController : MonoBehaviour
     // divides by zero.
     const float MinTopSpeed = 0.01f;
     // Int parameter on the fly's Animator; values match MovementState.
-    static readonly int StateAnimParameter = Animator.StringToHash("stateanim");
+    // Public so FlyAudio can read it on other players' copies, where this component is off.
+    public static readonly int StateAnimParameter = Animator.StringToHash("stateanim");
     // Float parameter on the fly's Animator that multiplies the fly state's playback speed (wing beat rate).
     static readonly int WingSpeedAnimParameter = Animator.StringToHash("flyspeed");
 
     public enum MovementState { Idle = 0, Walking = 1, Flying = 2 }
 
-    // Read by FlyAudio; also what the Animator's "stateanim" is set to.
+    // Read by FlyAudio on the owner's copy; also what the Animator's "stateanim" is set to.
     public MovementState State { get; private set; }
     // Read by FlyBodyMotion. Zero while walking or hovering still: walking has no momentum.
     public Vector3 FlyVelocity => flyVelocity;
@@ -87,6 +88,23 @@ public class FlyController : MonoBehaviour
     [Tooltip("Seconds the field of view takes to follow a change in speed. 0 = instant.")]
     [SerializeField, Range(0f, 1f)] float fovChangeTime = 0.2f;
 
+    // Slapped or hit by a thrown or falling object (FlyKnockbackNetwork calls Knock): the fly is
+    // flung like a loose object, tumbling, falling and bouncing, and cannot be steered until the
+    // stun wears off.
+    [Header("Knocked")]
+    [Tooltip("Seconds the fly cannot be steered (or spit) after a hit.")]
+    [SerializeField, Min(0f)] float stunTime = 1f;
+    // Stronger than real gravity: the Kitchen is scaled up (its falling objects use ScaledGravity
+    // around 10x), and a fly falling at 9.81 units/s² there would drift down like a feather.
+    [Tooltip("Downward pull while knocked, in units per second².")]
+    [SerializeField, Min(0f)] float knockGravity = 60f;
+    [Tooltip("Share of its speed the knocked fly loses to the air each second. Higher = it stops sooner.")]
+    [SerializeField, Range(0f, 0.99f)] float knockAirDrag = 0.5f;
+    [Tooltip("Share of its speed kept when the knocked fly bounces off a wall, floor or ceiling.")]
+    [SerializeField, Range(0f, 1f)] float knockBounce = 0.4f;
+    [Tooltip("Degrees per second the knocked fly spins while in the air.")]
+    [SerializeField, Min(0f)] float tumbleSpeed = 720f;
+
     CharacterController controller;
     InputAction moveAction;
     InputAction upAction;
@@ -99,6 +117,23 @@ public class FlyController : MonoBehaviour
     float steerYaw;
     float steerPitch;
     bool isGrounded;
+    Vector3 knockVelocity;
+    Vector3 tumbleAxis;
+    float stunLeft;
+
+    // True while the fly is knocked and cannot be steered. FlySpit reads it so a stunned fly cannot spit.
+    public bool IsStunned => stunLeft > 0f;
+
+    // Flings the fly at this velocity (units per second) and stuns it. Only call it on the owner's
+    // copy: on another player's copy this component is off and the network moves the fly.
+    public void Knock(Vector3 velocity)
+    {
+        knockVelocity = velocity;
+        flyVelocity = Vector3.zero;
+        stunLeft = stunTime;
+        isGrounded = false;
+        tumbleAxis = Random.onUnitSphere;
+    }
 
     void Awake()
     {
@@ -160,6 +195,11 @@ public class FlyController : MonoBehaviour
         bool isFreeMode = freeLookAction.IsPressed();
         if (!isFreeMode)
             SteerTowardCamera();
+        if (IsStunned)
+        {
+            MoveKnocked();
+            return;
+        }
 
         Vector2 move = moveAction.ReadValue<Vector2>();
         float lift = (upAction.IsPressed() ? 1f : 0f) - (downAction.IsPressed() ? 1f : 0f);
@@ -179,6 +219,38 @@ public class FlyController : MonoBehaviour
             animator.SetFloat(WingSpeedAnimParameter, WingBeatSpeed());
         }
         UpdateFieldOfView();
+    }
+
+    // Moves like a thrown object: gravity and air drag, a bounce on every contact, and a spin while
+    // in the air. Input is ignored. When the stun ends the fly keeps the speed it has as flight
+    // momentum, and Rotate turns it back toward the camera's direction.
+    void MoveKnocked()
+    {
+        stunLeft -= Time.deltaTime;
+        knockVelocity += Vector3.down * (knockGravity * Time.deltaTime);
+        knockVelocity *= Mathf.Pow(1f - knockAirDrag, Time.deltaTime);
+
+        // Bounces happen inside Move, in OnControllerColliderHit.
+        CollisionFlags contacts = controller.Move(knockVelocity * Time.deltaTime);
+        isGrounded = (contacts & CollisionFlags.Below) != 0;
+        if (!isGrounded)
+            transform.Rotate(tumbleAxis, tumbleSpeed * Time.deltaTime, Space.World);
+
+        State = isGrounded ? MovementState.Idle : MovementState.Flying;
+        if (animator != null)
+            animator.SetInteger(StateAnimParameter, (int)State);
+        if (!IsStunned)
+            flyVelocity = isGrounded ? Vector3.zero : knockVelocity;
+    }
+
+    // Called by the CharacterController during Move for every surface it touches. While knocked the
+    // fly bounces off it, losing speed each time, so it comes to rest instead of skating along the floor.
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        // Only surfaces it is moving into: one it is already leaving was bounced off a moment ago.
+        if (!IsStunned || Vector3.Dot(knockVelocity, hit.normal) >= 0f)
+            return;
+        knockVelocity = Vector3.Reflect(knockVelocity, hit.normal) * knockBounce;
     }
 
     // 0 while hovering still, 1 at full boost speed. Used for the wing beat and the field of view.

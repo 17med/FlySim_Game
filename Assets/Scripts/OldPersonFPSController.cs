@@ -26,7 +26,8 @@ public class OldPersonFPSController : MonoBehaviour
     // instead of flickering, and walking off an edge starts falling immediately.
     const float GroundStickSpeed = 2f;
     // Float parameter on old_person.controller: above 0.1 plays Walk, below plays Idle.
-    static readonly int SpeedAnimParameter = Animator.StringToHash("Speed");
+    // Public so OldPersonFootsteps can read it on other players' copies, where this component is off.
+    public static readonly int SpeedAnimParameter = Animator.StringToHash("Speed");
 
     [Tooltip("The first-person camera, a child of this object at eye height.")]
     [SerializeField] Camera viewCamera;
