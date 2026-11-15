@@ -236,7 +236,11 @@ public class FlyController : MonoBehaviour
         if (!isGrounded)
             transform.Rotate(tumbleAxis, tumbleSpeed * Time.deltaTime, Space.World);
 
-        State = isGrounded ? MovementState.Idle : MovementState.Flying;
+        // Held at Flying for the whole stun rather than following ground contact: every bounce would
+        // flip "stateanim" between Idle and Flying frame to frame, restarting the Animator's landing and
+        // take-off transitions (and sending each flip over NetworkAnimator). Update sets the real state
+        // on the first frame after the stun.
+        State = MovementState.Flying;
         if (animator != null)
             animator.SetInteger(StateAnimParameter, (int)State);
         if (!IsStunned)
