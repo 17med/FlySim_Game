@@ -25,7 +25,7 @@ public static class KitchenOnlineWiring
     const string FlySpawnPrefix = "fly pawner";
 
     // Everything on a body that reads this machine's input or draws to this machine's screen.
-    // Black, rotate and spitinterface are left out: they only animate the HUD, which the Canvas
+    // Black, rotate, spitinterface and OldPersonSpitScreen are left out: they only animate the HUD, which the Canvas
     // entry already hides on other players' copies. OldPersonSlap and OldPersonHoldArm stay on, because
     // other players' copies replay the arm through them (OldPersonArmNetwork); neither reads input there.
     static readonly Type[] OwnerOnlyTypes =
@@ -46,7 +46,7 @@ public static class KitchenOnlineWiring
         }
 
         bool prefabsWired = WirePrefab(FlyPrefabPath, typeof(FlyController), typeof(FlySpitNetwork), typeof(FlyKnockbackNetwork))
-                            && WirePrefab(HumanPrefabPath, typeof(OldPersonFPSController), typeof(OldPersonArmNetwork))
+                            && WirePrefab(HumanPrefabPath, typeof(OldPersonFPSController), typeof(OldPersonArmNetwork), typeof(OldPersonSpitNetwork))
                             && RegisterPrefabs();
         if (!prefabsWired)
         {

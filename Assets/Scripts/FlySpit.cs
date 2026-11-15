@@ -412,7 +412,8 @@ public class FlySpit : MonoBehaviour
         Vector3 velocity = direction * spitSpeed + fly.FlyVelocity * velocityInheritance;
         float size = isBigShot ? spitSize * bigShotSizeMultiplier : spitSize;
         Vector3 position = MuzzlePosition();
-        LaunchBlob(position, velocity, size, true);
+        SpitProjectile blob = LaunchBlob(position, velocity, size, true);
+        blob.IsBigShot = isBigShot;
         PlayShotEffects(isBigShot);
         // The final position, velocity and size, after the random spread, so other players' copies
         // fly the same path instead of rolling their own spread.
@@ -433,11 +434,12 @@ public class FlySpit : MonoBehaviour
             animator.SetTrigger(SpitAnimParameter);
     }
 
-    void LaunchBlob(Vector3 position, Vector3 velocity, float size, bool hitsTargets)
+    SpitProjectile LaunchBlob(Vector3 position, Vector3 velocity, float size, bool hitsTargets)
     {
         SpitProjectile blob = projectilePool.Get();
         blob.HitsTargets = hitsTargets;
         blob.Launch(position, velocity, transform, size);
+        return blob;
     }
 
     void PlayShotEffects(bool isBigShot)

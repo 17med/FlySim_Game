@@ -60,6 +60,10 @@ public class SpitProjectile : MonoBehaviour
     // False on a copy of another player's shot: it flies and splashes the same, but the shooter's own
     // blob is the one that hits, so a hit counts once and not once per machine. Set before Launch.
     public bool HitsTargets { get; set; } = true;
+    // Passed on in SpitHit, so a target can react harder to a Big Shot (OldPersonSpitScreen's bigger
+    // splat). Launch resets it; the shooter sets it after Launch, which is safe because the blob first
+    // looks for a hit in its next Update.
+    public bool IsBigShot { get; set; }
 
     readonly RaycastHit[] sweepHits = new RaycastHit[MaxSweepHits];
     IObjectPool<SpitProjectile> pool;
@@ -97,6 +101,8 @@ public class SpitProjectile : MonoBehaviour
         shooter = shooterRoot;
         age = 0f;
         hasImpacted = false;
+        // A pooled blob would otherwise keep the previous shot's flag.
+        IsBigShot = false;
         // Floored: a zero size would make the trail rescale divide by zero on the next shot.
         size = Mathf.Max(shotSize, MinSize);
         // Moved before activating: the trail emits by distance travelled, so a reused blob that was
@@ -275,6 +281,7 @@ public class SpitProjectile : MonoBehaviour
             normal = impact.normal,
             direction = velocity.normalized,
             force = impactForce * velocity.magnitude,
+            isBigShot = IsBigShot,
         });
     }
 
@@ -376,4 +383,6 @@ public struct SpitHit
     // Which way the blob was travelling, so a push can follow the shot rather than the surface.
     public Vector3 direction;
     public float force;
+    // The fly's charged shot. Always false for a slap (OldPersonSlap also sends SpitHits).
+    public bool isBigShot;
 }
