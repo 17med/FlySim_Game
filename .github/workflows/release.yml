@@ -49,11 +49,20 @@ jobs:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          # The action downloads the game-ci CLI from game-ci/cli's releases and reads this from the
+          # environment to authenticate that call (it has no input for it). Without it the call is
+          # anonymous, and GitHub's anonymous API limit is 60 an hour *per IP* - an IP this job shares
+          # with every other runner on the same host, so it is routinely spent by other people's jobs
+          # and one platform in the matrix fails with a 403 while the other happens to get through.
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           targetPlatform: ${{ matrix.targetPlatform }}
           buildName: FlySim
           versioning: Custom
           version: ${{ steps.version.outputs.version }}
+          # Pinned rather than "latest", so a release build is reproducible and so the action skips
+          # the "what is latest?" API call above entirely. Bump it deliberately.
+          cliVersion: v0.1.76
 
       - name: Zip and attach build
         env:
