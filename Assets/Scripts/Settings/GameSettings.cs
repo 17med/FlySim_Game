@@ -94,7 +94,8 @@ public static class GameSettings
             return "";
         }
         name = name.Trim().ToUpperInvariant();
-        return name.Length > MaxNameLength ? name.Substring(0, MaxNameLength) : name;
+        // Trimmed again after the cut: "A VERY LONG NAME" would otherwise end on a space.
+        return name.Length > MaxNameLength ? name.Substring(0, MaxNameLength).TrimEnd() : name;
     }
 
     public static string DefaultPlayerName()
