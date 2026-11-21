@@ -58,6 +58,12 @@ public class LobbyManager : NetworkBehaviour
     readonly NetworkVariable<int> matchMinutes =
         new NetworkVariable<int>(GameSettings.DefaultMatchMinutes, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
+    // Server only: names that arrived before their sender had a seat. A joining client sends its name
+    // from OnNetworkSpawn, while it is still being synchronised, and the server only seats it once
+    // OnClientConnectedCallback fires, which can be after that message has been handled. Without this,
+    // the name was dropped and the row read "WAITING…" for the whole lobby. Seat takes it from here.
+    readonly Dictionary<ulong, FixedString32Bytes> namesBeforeSeat = new Dictionary<ulong, FixedString32Bytes>();
+
     // Raised on every machine whenever the roster changes, including the first fill on join.
     public event Action RosterChanged;
     // Raised on the machine being asked to swap: who is asking, their name, and whether saying yes
@@ -254,12 +260,18 @@ public class LobbyManager : NetworkBehaviour
             return;
         }
 
+        // The name if it already came in (see namesBeforeSeat); otherwise a placeholder that
+        // SubmitNameRpc replaces a moment later, which is what the mock-up's empty slot says.
+        FixedString32Bytes name = "WAITING…";
+        if (namesBeforeSeat.TryGetValue(clientId, out FixedString32Bytes earlyName))
+        {
+            name = earlyName;
+            namesBeforeSeat.Remove(clientId);
+        }
         members.Add(new LobbyMember
         {
             ClientId = clientId,
-            // Replaced by SubmitNameRpc a moment later; shown meanwhile, which is what the mock-up's
-            // empty slot says.
-            Name = "WAITING…",
+            Name = name,
             Role = role,
         });
     }
@@ -270,6 +282,9 @@ public class LobbyManager : NetworkBehaviour
         {
             return;
         }
+        // A player who left before being seated must not hand their name to a later client that is
+        // given the same id.
+        namesBeforeSeat.Remove(clientId);
 
         // A request involving whoever just left can never be answered.
         if (hasPendingRequest && (pendingRequesterId == clientId || pendingTargetId == clientId))
@@ -324,6 +339,8 @@ public class LobbyManager : NetworkBehaviour
             members[i] = member;
             return;
         }
+        // Not seated yet: kept for Seat rather than dropped.
+        namesBeforeSeat[clientId] = name;
     }
 
     // A flyer asking for the human role (the lobby's REQUEST THIS ROLE button).

@@ -2,7 +2,7 @@ using Unity.Netcode;
 using UnityEngine;
 
 // Makes one clock and one verdict out of a room full of machines.
-// Each player could count ten minutes down on their own, but they would not count the same ten
+// Each player could count the match down on their own, but they would not count the same five
 // minutes: the clock here is a moment in the server's time, which every client already has in step,
 // so the last minute starts for everyone at once. The ending is the host's call for the same reason -
 // two machines that disagreed about who won would each show their own player a different result.
@@ -14,7 +14,7 @@ public class MatchNetwork : NetworkBehaviour
     public static MatchNetwork Instance { get; private set; }
 
     // The moment the clock runs out, in server time. Server writes, everyone reads, so a player who
-    // joins late still sees the right time left rather than a fresh ten minutes.
+    // joins late still sees the right time left rather than a fresh full match.
     readonly NetworkVariable<double> endsAt =
         new NetworkVariable<double>(0d, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 

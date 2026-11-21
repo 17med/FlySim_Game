@@ -143,7 +143,7 @@ public class LobbyUI : MonoBehaviour
         if (humanTagText != null)
         {
             // Client id 0 is always the host: the player whose machine the room runs on.
-            humanTagText.text = !hasHuman ? "" : human.ClientId == 0 ? "HOST  ·  HOLDS THE SWATTER" : "HOLDS THE SWATTER";
+            humanTagText.text = !hasHuman ? "" : MarkIfLocal(human, human.ClientId == 0 ? "HOST  ·  HOLDS THE SWATTER" : "HOLDS THE SWATTER");
         }
         if (humanMonogramText != null)
         {
@@ -200,7 +200,7 @@ public class LobbyUI : MonoBehaviour
                 filled++;
             }
             if (slot.nameText != null) slot.nameText.text = occupied ? DisplayName(flyer) : "WAITING…";
-            if (slot.tagText != null) slot.tagText.text = !occupied ? "" : flyer.ClientId == 0 ? "HOST" : "FLYER";
+            if (slot.tagText != null) slot.tagText.text = !occupied ? "" : MarkIfLocal(flyer, flyer.ClientId == 0 ? "HOST" : "FLYER");
             if (slot.monogramText != null) slot.monogramText.text = occupied ? Monogram(flyer.Name.ToString()) : "";
             if (slot.swapButton != null)
             {
@@ -235,9 +235,18 @@ public class LobbyUI : MonoBehaviour
         }
     }
 
-    string DisplayName(LobbyMember member)
+    // Every row shows the player's own name, this player's included, so both players see the same
+    // names. Which row is yours is said on the tag line under it instead (MarkIfLocal): the name box
+    // is too narrow for a 12-letter name with "(YOU)" after it.
+    static string DisplayName(LobbyMember member)
     {
-        return manager != null && member.ClientId == manager.NetworkManager.LocalClientId ? "YOU" : member.Name.ToString();
+        return member.Name.ToString();
+    }
+
+    string MarkIfLocal(LobbyMember member, string tag)
+    {
+        bool isLocal = manager != null && member.ClientId == manager.NetworkManager.LocalClientId;
+        return isLocal ? $"YOU  ·  {tag}" : tag;
     }
 
     static string Monogram(string name)

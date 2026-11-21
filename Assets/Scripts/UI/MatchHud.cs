@@ -4,107 +4,137 @@ using UnityEngine.UI;
 
 // What the players need to see while the kitchen is being raided: how long is left, how much couscous
 // is left, and what the key under their finger does.
-// Built in code and added by MatchDirector, the way PauseMenu builds itself, so neither kitchen scene
-// needs any UI of its own. It sorts below the pause menu, which should cover it when it opens.
+// The HUD lives in each kitchen scene (Tools > Match > Add HUD To Open Scene makes it once), so its
+// texts and bar are placed, sized and coloured by hand in the Editor. This script only fills them in:
+// it never moves anything, so whatever layout the scene has is the layout the players see.
+// The colours each object has in the scene are its normal colours; the fields below are only the
+// colours it changes to (the final minute, a low bar, a win or a loss).
 // Everything it shows comes from MatchDirector; it holds no state of its own beyond its animations.
 public class MatchHud : MonoBehaviour
 {
-    const int SortingOrder = 850;
     // How long the "hold E to eat" line stays up at the start of a match, in seconds.
     const float HintSeconds = 14f;
     // Pulses per second of the clock in the final minute.
     const float AlarmRate = 2f;
+    // How much the clock grows on each pulse of the final minute. 0.06 = 6% bigger.
+    const float AlarmPulseScale = 0.06f;
     // How often the scene is swept for this machine's own fly while it has not been found yet.
     const float EaterSearchInterval = 0.5f;
 
-    static readonly Color Ink = new Color(0.95f, 0.95f, 0.97f, 1f);
-    static readonly Color InkDim = new Color(0.72f, 0.72f, 0.78f, 0.9f);
-    static readonly Color Alarm = new Color(1f, 0.33f, 0.28f, 1f);
-    static readonly Color BarTrack = new Color(0f, 0f, 0f, 0.45f);
-    static readonly Color BarFill = new Color(0.98f, 0.76f, 0.3f, 1f);
-    static readonly Color BarLow = new Color(0.95f, 0.38f, 0.25f, 1f);
-    static readonly Color Scrim = new Color(0f, 0f, 0f, 0.55f);
-    static readonly Color Win = new Color(0.55f, 0.95f, 0.55f, 1f);
-    static readonly Color Lose = new Color(1f, 0.5f, 0.45f, 1f);
+    [Header("Timer")]
+    [Tooltip("The match clock, \"09:58\".")]
+    [SerializeField] TMP_Text clockText;
 
-    MatchDirector match;
-    TMP_Text clockText;
-    TMP_Text foodText;
-    RectTransform clockRect;
-    Image foodFill;
-    TMP_Text stateText;
-    TMP_Text hintText;
-    GameObject resultRoot;
-    TMP_Text resultText;
-    TMP_Text resultNoteText;
+    [Header("Couscous Bar")]
+    [Tooltip("The coloured part of the bar. Must be a child of the bar's background: it is stretched from the left edge of its parent to show how much food is left.")]
+    [SerializeField] Image foodFill;
+    [Tooltip("The \"COUSCOUS 100%\" label.")]
+    [SerializeField] TMP_Text foodText;
+
+    [Header("Lines Under The Bar")]
+    [Tooltip("What this player is doing right now: EATING, HOLD E, or why they cannot eat.")]
+    [SerializeField] TMP_Text stateText;
+    [Tooltip("The how-to-play line shown for the first seconds of the match.")]
+    [SerializeField] TMP_Text hintText;
+
+    [Header("Result Screen")]
+    [Tooltip("Shown when the match ends, hidden otherwise. It is hidden on Play, so it can be left visible while editing.")]
+    [SerializeField] GameObject resultRoot;
+    [SerializeField] TMP_Text resultText;
+    [SerializeField] TMP_Text resultNoteText;
+
+    [Header("Colours It Changes To")]
+    [SerializeField] Color alarmColor = new Color(1f, 0.33f, 0.28f, 1f);
+    [Tooltip("The bar's colour when almost empty. It blends to this from its scene colour over the last third.")]
+    [SerializeField] Color foodLowColor = new Color(0.95f, 0.38f, 0.25f, 1f);
+    [SerializeField] Color eatingColor = new Color(0.98f, 0.76f, 0.3f, 1f);
+    [SerializeField] Color winColor = new Color(0.55f, 0.95f, 0.55f, 1f);
+    [SerializeField] Color loseColor = new Color(1f, 0.5f, 0.45f, 1f);
+
+    // The colours the scene gave these objects, which is what they go back to.
+    Color clockColor;
+    Color foodColor;
+    Color stateColor;
+    Vector3 clockScale;
+
     FlyEating localEater;
     float eaterSearchAt;
     float hintLeft = HintSeconds;
     float alarmPhase;
-    Vector2 clockRestPosition;
 
     void Awake()
     {
-        match = GetComponent<MatchDirector>();
-        Build();
+        // Fails open: a HUD with a missing piece is switched off and the match plays on without it,
+        // rather than throwing every frame. Nothing is lost but the display, and the error names the
+        // field to fill in.
+        if (!HasEveryPiece())
+        {
+            enabled = false;
+            return;
+        }
+        clockColor = clockText.color;
+        foodColor = foodFill.color;
+        stateColor = stateText.color;
+        clockScale = clockText.rectTransform.localScale;
+        resultRoot.SetActive(false);
     }
 
     void Update()
     {
+        MatchDirector match = MatchDirector.Instance;
         if (match == null)
         {
             return;
         }
-        ShowClock();
-        ShowFood();
-        ShowState();
-        ShowResult();
+        ShowClock(match);
+        ShowFood(match);
+        ShowState(match);
+        ShowResult(match);
+    }
+
+    bool HasEveryPiece()
+    {
+        bool hasAll = clockText != null && foodFill != null && foodText != null && stateText != null
+                      && hintText != null && resultRoot != null && resultText != null && resultNoteText != null;
+        if (!hasAll)
+        {
+            Debug.LogError($"{nameof(MatchHud)}: one of the fields on {name} is empty, so the HUD is off. " +
+                           "Fill it in the Inspector, or delete this object and run Tools > Match > Add HUD To Open Scene.", this);
+        }
+        return hasAll;
     }
 
     // ---- what it says --------------------------------------------------------------------------
 
-    void ShowClock()
+    void ShowClock(MatchDirector match)
     {
         clockText.text = MatchDirector.Clock(match.SecondsLeft);
         if (!match.IsFinalMinute)
         {
-            clockText.color = Ink;
-            clockRect.anchoredPosition = clockRestPosition;
-            clockRect.localScale = Vector3.one;
+            clockText.color = clockColor;
+            clockText.rectTransform.localScale = clockScale;
             return;
         }
 
         // The last minute: the clock beats, so it is felt rather than read.
         alarmPhase += Time.deltaTime * AlarmRate;
         float beat = 0.5f + 0.5f * Mathf.Sin(alarmPhase * Mathf.PI * 2f);
-        clockText.color = Color.Lerp(Ink, Alarm, beat);
-        clockRect.localScale = Vector3.one * (1f + 0.06f * beat);
+        clockText.color = Color.Lerp(clockColor, alarmColor, beat);
+        clockText.rectTransform.localScale = clockScale * (1f + AlarmPulseScale * beat);
     }
 
-    void ShowFood()
+    void ShowFood(MatchDirector match)
     {
         float left = Mathf.Clamp01(match.FoodLeft);
-        foodFill.rectTransform.anchorMax = new Vector2(left, 1f);
-        foodFill.color = Color.Lerp(BarLow, BarFill, Mathf.Clamp01(left * 3f));
+        foodFill.rectTransform.anchorMax = new Vector2(left, foodFill.rectTransform.anchorMax.y);
+        foodFill.color = Color.Lerp(foodLowColor, foodColor, Mathf.Clamp01(left * 3f));
         foodText.text = $"COUSCOUS  {Mathf.CeilToInt(left * 100f)}%";
     }
 
     // The line under the bar: what this player should be doing, and why they cannot.
-    void ShowState()
+    void ShowState(MatchDirector match)
     {
-        if (hintLeft > 0f)
-        {
-            hintLeft -= Time.deltaTime;
-            hintText.text = GameSession.LocalRole == PlayerRole.Human
-                ? "KEEP THE FLIES OFF THE COUSCOUS  ·  STAND OVER IT AND THEY CANNOT EAT"
-                : "LAND ON THE COUSCOUS AND HOLD  E  TO EAT IT";
-            // Fades out over its last two seconds rather than vanishing mid-read.
-            hintText.alpha = Mathf.Clamp01(hintLeft * 0.5f);
-        }
-        else if (hintText.alpha > 0f)
-        {
-            hintText.alpha = 0f;
-        }
+        ShowHint();
 
         stateText.text = "";
         if (match.IsOver)
@@ -119,7 +149,7 @@ public class MatchHud : MonoBehaviour
             if (GameSession.LocalRole == PlayerRole.Human && match.FoodLeft < 0.35f)
             {
                 stateText.text = "THEY ARE EATING IT";
-                stateText.color = Alarm;
+                stateText.color = alarmColor;
             }
             return;
         }
@@ -127,21 +157,38 @@ public class MatchHud : MonoBehaviour
         if (eater.Eating)
         {
             stateText.text = "EATING";
-            stateText.color = BarFill;
+            stateText.color = eatingColor;
         }
         else if (eater.BlockedReason != "")
         {
             stateText.text = eater.BlockedReason;
-            stateText.color = Alarm;
+            stateText.color = alarmColor;
         }
         else
         {
             stateText.text = "HOLD  E";
-            stateText.color = InkDim;
+            stateText.color = stateColor;
         }
     }
 
-    void ShowResult()
+    void ShowHint()
+    {
+        if (hintLeft > 0f)
+        {
+            hintLeft -= Time.deltaTime;
+            hintText.text = GameSession.LocalRole == PlayerRole.Human
+                ? "KEEP THE FLIES OFF THE COUSCOUS  ·  STAND OVER IT AND THEY CANNOT EAT"
+                : "LAND ON THE COUSCOUS AND HOLD  E  TO EAT IT";
+            // Fades out over its last two seconds rather than vanishing mid-read.
+            hintText.alpha = Mathf.Clamp01(hintLeft * 0.5f);
+        }
+        else if (hintText.alpha > 0f)
+        {
+            hintText.alpha = 0f;
+        }
+    }
+
+    void ShowResult(MatchDirector match)
     {
         if (!match.IsOver)
         {
@@ -158,7 +205,7 @@ public class MatchHud : MonoBehaviour
 
         bool fliesWon = match.CurrentPhase == MatchDirector.Phase.FliesWon;
         resultText.text = fliesWon ? "THE COUSCOUS IS GONE" : "THE COUSCOUS SURVIVED";
-        resultText.color = match.LocalPlayerWon ? Win : Lose;
+        resultText.color = match.LocalPlayerWon ? winColor : loseColor;
         resultNoteText.text = match.LocalPlayerWon
             ? fliesWon ? "THE FLIES ATE EVERY LAST GRAIN  ·  YOU WIN" : "YOU KEPT THEM OFF IT TO THE LAST SECOND  ·  YOU WIN"
             : fliesWon ? "THEY CLEARED THE PLATE  ·  YOU LOSE" : "THE CLOCK RAN OUT WITH FOOD STILL ON IT  ·  YOU LOSE";
@@ -192,115 +239,5 @@ public class MatchHud : MonoBehaviour
             }
         }
         return null;
-    }
-
-    // ---- the canvas ----------------------------------------------------------------------------
-
-    void Build()
-    {
-        var canvasObject = new GameObject("Match_Canvas");
-        canvasObject.transform.SetParent(transform, false);
-        Canvas canvas = canvasObject.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = SortingOrder;
-        CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
-
-        // No GraphicRaycaster: nothing here is clickable, and one more raycaster would take clicks
-        // away from the pause menu underneath it.
-        Transform root = canvasObject.transform;
-
-        clockText = NewLabel("Clock", root, "00:00", 64f, Ink);
-        clockRect = clockText.rectTransform;
-        TopCentre(clockRect, 0f, 150f, 74f);
-        clockRestPosition = clockRect.anchoredPosition;
-
-        Image track = NewImage("Food_Track", root, BarTrack);
-        TopCentre(track.rectTransform, -92f, 420f, 18f);
-        foodFill = NewImage("Food_Fill", track.transform, BarFill);
-        foodFill.rectTransform.anchorMin = Vector2.zero;
-        foodFill.rectTransform.anchorMax = Vector2.one;
-        foodFill.rectTransform.offsetMin = Vector2.zero;
-        foodFill.rectTransform.offsetMax = Vector2.zero;
-
-        foodText = NewLabel("Food_Label", root, "COUSCOUS  100%", 24f, InkDim);
-        TopCentre(foodText.rectTransform, -118f, 420f, 30f);
-
-        stateText = NewLabel("State", root, "", 30f, InkDim);
-        TopCentre(stateText.rectTransform, -158f, 620f, 36f);
-
-        hintText = NewLabel("Hint", root, "", 26f, InkDim);
-        RectTransform hint = hintText.rectTransform;
-        hint.anchorMin = hint.anchorMax = new Vector2(0.5f, 0f);
-        hint.pivot = new Vector2(0.5f, 0f);
-        hint.anchoredPosition = new Vector2(0f, 120f);
-        hint.sizeDelta = new Vector2(1100f, 36f);
-
-        BuildResult(root);
-    }
-
-    void BuildResult(Transform root)
-    {
-        resultRoot = new GameObject("Result", typeof(RectTransform));
-        resultRoot.transform.SetParent(root, false);
-        RectTransform rect = (RectTransform)resultRoot.transform;
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-
-        Image scrim = NewImage("Scrim", resultRoot.transform, Scrim);
-        scrim.rectTransform.anchorMin = Vector2.zero;
-        scrim.rectTransform.anchorMax = Vector2.one;
-        scrim.rectTransform.offsetMin = Vector2.zero;
-        scrim.rectTransform.offsetMax = Vector2.zero;
-
-        resultText = NewLabel("Headline", resultRoot.transform, "", 78f, Ink);
-        Centre(resultText.rectTransform, 40f, 1400f, 96f);
-        resultNoteText = NewLabel("Note", resultRoot.transform, "", 30f, InkDim);
-        Centre(resultNoteText.rectTransform, -40f, 1400f, 40f);
-
-        resultRoot.SetActive(false);
-    }
-
-    static void TopCentre(RectTransform rect, float fromTop, float width, float height)
-    {
-        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
-        rect.pivot = new Vector2(0.5f, 1f);
-        rect.anchoredPosition = new Vector2(0f, fromTop - 120f);
-        rect.sizeDelta = new Vector2(width, height);
-    }
-
-    static void Centre(RectTransform rect, float fromMiddle, float width, float height)
-    {
-        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = new Vector2(0f, fromMiddle);
-        rect.sizeDelta = new Vector2(width, height);
-    }
-
-    static Image NewImage(string name, Transform parent, Color color)
-    {
-        var imageObject = new GameObject(name, typeof(RectTransform));
-        imageObject.transform.SetParent(parent, false);
-        Image image = imageObject.AddComponent<Image>();
-        image.color = color;
-        image.raycastTarget = false;
-        return image;
-    }
-
-    static TMP_Text NewLabel(string name, Transform parent, string content, float size, Color color)
-    {
-        var textObject = new GameObject(name, typeof(RectTransform));
-        textObject.transform.SetParent(parent, false);
-        TextMeshProUGUI text = textObject.AddComponent<TextMeshProUGUI>();
-        text.text = content;
-        text.fontSize = size;
-        text.color = color;
-        text.alignment = TextAlignmentOptions.Center;
-        text.raycastTarget = false;
-        return text;
     }
 }

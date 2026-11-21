@@ -1,12 +1,15 @@
+using TMPro;
 using Unity.Netcode;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 // Puts the raid into the kitchen (Tools > Match > Wire Match): the fly gets its eating, the couscous
 // becomes food that can be eaten and run out, and the online kitchen gets the Match object that keeps
-// one clock and one verdict for the whole room.
+// one clock and one verdict for the whole room. Both kitchens get the HUD (timer, couscous bar,
+// result screen) as scene UI if they have none yet; Tools > Match > Add HUD To Open Scene does only that.
 // A menu step rather than hand-edited scene files because of that last part: Netcode works out a
 // NetworkObject's scene id when the component is added through the Editor, so a Match object written
 // into the YAML by hand would never spawn.
@@ -18,6 +21,8 @@ public static class MatchWiring
     const string EatClipFolder = "Assets/audio/SFX/Fly/eat_sound/";
     const string MatchObjectName = "Match";
     const string EatSourceName = "SFX_Eat";
+    const string HudObjectName = "Match_HUD";
+    const int HudSortingOrder = 850;
 
     static readonly string[] EatClips = { "eat.wav", "eat_2.wav", "eat_3.wav" };
 
@@ -61,6 +66,7 @@ public static class MatchWiring
         {
             return false;
         }
+        WireHud();
 
         EditorSceneManager.MarkSceneDirty(scene);
         string room = isOnline ? $", and {MatchObjectName} keeps the room's clock" : "";
@@ -183,6 +189,165 @@ public static class MatchWiring
         Undo.AddComponent<NetworkObject>(matchObject);
         Undo.AddComponent<MatchNetwork>(matchObject);
         return true;
+    }
+
+    // ---- the HUD -------------------------------------------------------------------------------
+
+    // Puts the timer, couscous bar and result screen into the open kitchen as ordinary scene UI, laid
+    // out the way the old code-built HUD was. Made once: after that the layout is the scene's, moved
+    // and resized by hand, and this never touches a HUD that is already there.
+    [MenuItem("Tools/Match/Add HUD To Open Scene")]
+    static void AddHudToOpenScene()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        if (scene.name != GameSceneManager.KitchenScene && scene.name != GameSceneManager.KitchenOnlineScene)
+        {
+            Debug.LogError($"Add HUD: open {GameSceneManager.KitchenScene} or {GameSceneManager.KitchenOnlineScene} first (the open scene is '{scene.name}').");
+            return;
+        }
+        MatchHud hud = WireHud();
+        Selection.activeGameObject = hud.gameObject;
+        EditorSceneManager.MarkSceneDirty(scene);
+        Debug.Log($"Add HUD: {HudObjectName} is in {scene.name}. Move its children where you want them, then save (Ctrl+S).", hud);
+    }
+
+    static MatchHud WireHud()
+    {
+        MatchHud existing = Object.FindAnyObjectByType<MatchHud>(FindObjectsInactive.Include);
+        if (existing != null)
+        {
+            Debug.Log($"Wire Match: {existing.name} is already in the scene; its layout was left as it is.", existing);
+            return existing;
+        }
+
+        var canvasObject = new GameObject(HudObjectName, typeof(RectTransform));
+        Canvas canvas = canvasObject.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        // Below the pause menu (900), which should cover the HUD when it opens.
+        canvas.sortingOrder = HudSortingOrder;
+        CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
+        // No GraphicRaycaster: nothing on the HUD is clickable, and one more raycaster would take
+        // clicks away from the pause menu underneath it.
+
+        MatchHud hud = canvasObject.AddComponent<MatchHud>();
+        var fields = new SerializedObject(hud);
+        BuildHudTop(canvasObject.transform, fields);
+        BuildHudResult(canvasObject.transform, fields);
+        fields.ApplyModifiedPropertiesWithoutUndo();
+
+        Undo.RegisterCreatedObjectUndo(canvasObject, "Add Match HUD");
+        return hud;
+    }
+
+    static void BuildHudTop(Transform root, SerializedObject fields)
+    {
+        TMP_Text clock = NewLabel("Timer", root, "05:00", 64f, new Color(0.95f, 0.95f, 0.97f, 1f));
+        TopCentre(clock.rectTransform, 0f, 150f, 74f);
+        SetReference(fields, "clockText", clock);
+
+        Image track = NewImage("Couscous_Bar", root, new Color(0f, 0f, 0f, 0.45f));
+        TopCentre(track.rectTransform, -92f, 420f, 18f);
+        Image fill = NewImage("Couscous_Bar_Fill", track.transform, new Color(0.98f, 0.76f, 0.3f, 1f));
+        Stretch(fill.rectTransform);
+        SetReference(fields, "foodFill", fill);
+
+        Color dim = new Color(0.72f, 0.72f, 0.78f, 0.9f);
+        TMP_Text foodLabel = NewLabel("Couscous_Label", root, "COUSCOUS  100%", 24f, dim);
+        TopCentre(foodLabel.rectTransform, -118f, 420f, 30f);
+        SetReference(fields, "foodText", foodLabel);
+
+        TMP_Text state = NewLabel("State", root, "HOLD  E", 30f, dim);
+        TopCentre(state.rectTransform, -158f, 620f, 36f);
+        SetReference(fields, "stateText", state);
+
+        TMP_Text hint = NewLabel("Hint", root, "LAND ON THE COUSCOUS AND HOLD  E  TO EAT IT", 26f, dim);
+        RectTransform hintRect = hint.rectTransform;
+        hintRect.anchorMin = hintRect.anchorMax = new Vector2(0.5f, 0f);
+        hintRect.pivot = new Vector2(0.5f, 0f);
+        hintRect.anchoredPosition = new Vector2(0f, 120f);
+        hintRect.sizeDelta = new Vector2(1100f, 36f);
+        SetReference(fields, "hintText", hint);
+    }
+
+    // Left inactive in the scene so it does not cover the kitchen while editing; tick it on to edit it.
+    static void BuildHudResult(Transform root, SerializedObject fields)
+    {
+        var resultRoot = new GameObject("Result", typeof(RectTransform));
+        resultRoot.transform.SetParent(root, false);
+        Stretch((RectTransform)resultRoot.transform);
+        Stretch(NewImage("Scrim", resultRoot.transform, new Color(0f, 0f, 0f, 0.55f)).rectTransform);
+
+        TMP_Text headline = NewLabel("Headline", resultRoot.transform, "THE COUSCOUS SURVIVED", 78f, new Color(0.95f, 0.95f, 0.97f, 1f));
+        Centre(headline.rectTransform, 40f, 1400f, 96f);
+        TMP_Text note = NewLabel("Note", resultRoot.transform, "YOU KEPT THEM OFF IT TO THE LAST SECOND  ·  YOU WIN", 30f, new Color(0.72f, 0.72f, 0.78f, 0.9f));
+        Centre(note.rectTransform, -40f, 1400f, 40f);
+
+        SetReference(fields, "resultRoot", resultRoot);
+        SetReference(fields, "resultText", headline);
+        SetReference(fields, "resultNoteText", note);
+        resultRoot.SetActive(false);
+    }
+
+    // Fails closed: a field renamed in MatchHud without this being updated stops the run loudly
+    // instead of leaving a HUD that switches itself off at runtime.
+    static void SetReference(SerializedObject fields, string fieldName, Object value)
+    {
+        SerializedProperty property = fields.FindProperty(fieldName);
+        if (property == null)
+        {
+            throw new System.InvalidOperationException($"Add HUD: {nameof(MatchHud)} has no serialized field '{fieldName}'. Update {nameof(MatchWiring)} to match it.");
+        }
+        property.objectReferenceValue = value;
+    }
+
+    static void TopCentre(RectTransform rect, float fromTop, float width, float height)
+    {
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = new Vector2(0f, fromTop - 120f);
+        rect.sizeDelta = new Vector2(width, height);
+    }
+
+    static void Centre(RectTransform rect, float fromMiddle, float width, float height)
+    {
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = new Vector2(0f, fromMiddle);
+        rect.sizeDelta = new Vector2(width, height);
+    }
+
+    static void Stretch(RectTransform rect)
+    {
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
+    static Image NewImage(string name, Transform parent, Color color)
+    {
+        var imageObject = new GameObject(name, typeof(RectTransform));
+        imageObject.transform.SetParent(parent, false);
+        Image image = imageObject.AddComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    static TMP_Text NewLabel(string name, Transform parent, string content, float size, Color color)
+    {
+        var textObject = new GameObject(name, typeof(RectTransform));
+        textObject.transform.SetParent(parent, false);
+        TextMeshProUGUI text = textObject.AddComponent<TextMeshProUGUI>();
+        text.text = content;
+        text.fontSize = size;
+        text.color = color;
+        text.alignment = TextAlignmentOptions.Center;
+        text.raycastTarget = false;
+        return text;
     }
 
     // ---- small helpers -------------------------------------------------------------------------

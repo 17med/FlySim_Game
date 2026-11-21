@@ -25,6 +25,11 @@ public static class GameSession
     // has their own settings. The settings default when the Kitchen is played on its own.
     public static int MatchMinutes { get; set; } = GameSettings.DefaultMatchMinutes;
 
+    // Why this machine was sent back to the menu without asking to go, e.g. the host left the game.
+    // Set after Reset on the way out; the menu (LocalNetworkConnector) shows it in its error modal
+    // once it has loaded, then clears it. Empty when the player left on purpose.
+    public static string ReturnReason { get; set; } = "";
+
     // Host only: every player's role by client id. LocalRole is all a client needs, but the host
     // spawns everyone's body (KitchenSpawner) after the lobby that knew the roster is gone.
     static readonly Dictionary<ulong, PlayerRole> roles = new Dictionary<ulong, PlayerRole>();
@@ -44,6 +49,7 @@ public static class GameSession
         LocalRole = PlayerRole.Flyer;
         StartedFromLobby = false;
         MatchMinutes = GameSettings.DefaultMatchMinutes;
+        ReturnReason = "";
         roles.Clear();
     }
 }

@@ -37,6 +37,12 @@ public class LocalNetworkConnector : MonoBehaviour
     [Tooltip("Status_TMP - shared with LobbyUI, which takes over once the room is up.")]
     public TMP_Text statusText;
 
+    [Header("Error modal")]
+    [Tooltip("Error_Modal - shown when the connection is lost (the host left, the room refused you). Tools > Main Menu > Add Error Modal makes it.")]
+    public GameObject errorModalRoot;
+    public TMP_Text errorMessageText;
+    public Button errorOkButton;
+
     [Tooltip("The port used when the port box is left empty. Any free port works as long as both sides use the same one.")]
     public ushort defaultPort = 7777;
     [Tooltip("Seconds to wait for the host to answer before giving up. Netcode's own timeout is a minute.")]
@@ -57,6 +63,8 @@ public class LocalNetworkConnector : MonoBehaviour
         if (joinButton != null) joinButton.onClick.AddListener(Join);
         if (copyButton != null) copyButton.onClick.AddListener(CopyAddress);
         if (leaveButton != null) leaveButton.onClick.AddListener(Leave);
+        if (errorOkButton != null) errorOkButton.onClick.AddListener(HideError);
+        if (errorModalRoot != null) errorModalRoot.SetActive(false);
 
         RestoreLastUsed();
 
@@ -77,6 +85,13 @@ public class LocalNetworkConnector : MonoBehaviour
         {
             NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
+        }
+
+        // Sent back from a game without asking to be (MatchDirector): say why, once.
+        if (GameSession.ReturnReason != "")
+        {
+            ShowError(GameSession.ReturnReason);
+            GameSession.ReturnReason = "";
         }
     }
 
@@ -244,9 +259,27 @@ public class LocalNetworkConnector : MonoBehaviour
         joining = false;
         NetworkManager.Singleton.Shutdown();
         ShowActionBar();
-        SetStatus(!string.IsNullOrEmpty(reason)
+        ShowError(!string.IsNullOrEmpty(reason)
             ? reason.ToUpperInvariant()
             : wasJoining ? "THE KITCHEN TURNED YOU AWAY" : "THE HOST CLOSED THE KITCHEN");
+    }
+
+    // Fails open: a menu whose modal has not been added yet still says what happened, on the status
+    // line, rather than not at all.
+    void ShowError(string message)
+    {
+        SetStatus(message);
+        if (errorModalRoot == null || errorMessageText == null)
+        {
+            return;
+        }
+        errorMessageText.text = message;
+        errorModalRoot.SetActive(true);
+    }
+
+    void HideError()
+    {
+        if (errorModalRoot != null) errorModalRoot.SetActive(false);
     }
 
     void ShowRoom()

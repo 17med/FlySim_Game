@@ -58,6 +58,12 @@ public class FlyEating : MonoBehaviour
     // 0 to 1: how far into the dip the fly is, so starting and stopping eases instead of snapping.
     float dip;
     float chewPhase;
+    // The pose the nibble was added to, and the pose it left on the model. See ApplyNibble.
+    bool hasNibblePose;
+    Vector3 basePosition;
+    Quaternion baseRotation;
+    Vector3 nibblePosition;
+    Quaternion nibbleRotation;
 
     // True while this fly is eating. On the owner's copy it is worked out from the key and the dish;
     // on everyone else's, FlyEatNetwork sets it from the owner.
@@ -136,15 +142,52 @@ public class FlyEating : MonoBehaviour
         dip = Mathf.MoveTowards(dip, Eating ? 1f : 0f, Time.deltaTime / dipFade);
         if (dip <= 0f)
         {
+            RestoreBasePose();
             return;
         }
 
         // 0 at the top of a chew, 1 at the bottom.
         float chew = 0.5f - 0.5f * Mathf.Cos(chewPhase * Mathf.PI * 2f);
-        float depth = dip * (1f - chewDepth + chewDepth * chew);
-        model.localPosition += model.localRotation * new Vector3(0f, -dipDistance * depth, dipDistance * depth * 0.5f);
+        ApplyNibble(dip * (1f - chewDepth + chewDepth * chew));
+    }
+
+    // Adds the dip to the model's pose for this frame. On the owner's copy FlySpit re-poses the model
+    // every frame before this runs, so the current pose is the base. On another player's copy nothing
+    // does (FlySpit is owner-only and the network fly has no FlyBodyMotion), so the model still holds
+    // what this left last frame; adding to that again every frame is what spun the other players' flies
+    // and left them twisted for the rest of the game. So when the pose is untouched, the last base is
+    // reused instead of the nibble being stacked on itself.
+    void ApplyNibble(float depth)
+    {
+        bool isUntouched = hasNibblePose && model.localPosition == nibblePosition && model.localRotation == nibbleRotation;
+        if (!isUntouched)
+        {
+            basePosition = model.localPosition;
+            baseRotation = model.localRotation;
+        }
+
+        model.localPosition = basePosition + baseRotation * new Vector3(0f, -dipDistance * depth, dipDistance * depth * 0.5f);
         // The model child carries its own 180° X rotation, so the tip is applied in its local space.
-        model.localRotation *= Quaternion.Euler(dipAngle * depth, 0f, 0f);
+        model.localRotation = baseRotation * Quaternion.Euler(dipAngle * depth, 0f, 0f);
+        nibblePosition = model.localPosition;
+        nibbleRotation = model.localRotation;
+        hasNibblePose = true;
+    }
+
+    // Takes the dip back off once eating has stopped. Only needed where nothing else re-poses the
+    // model; where something does, it already has, and its pose is left alone.
+    void RestoreBasePose()
+    {
+        if (!hasNibblePose || model == null)
+        {
+            return;
+        }
+        hasNibblePose = false;
+        if (model.localPosition == nibblePosition && model.localRotation == nibbleRotation)
+        {
+            model.localPosition = basePosition;
+            model.localRotation = baseRotation;
+        }
     }
 
     // The key is held, the fly is over a dish with food on it, nothing has knocked it off, and the old
@@ -230,6 +273,8 @@ public class FlyEating : MonoBehaviour
     {
         Eating = false;
         dip = 0f;
+        // Disabled mid-bite, LateUpdate will not run again to lift the head back out.
+        RestoreBasePose();
         // A mouthful that was never sent is dropped rather than held: it would otherwise arrive as one
         // big bite the next time this fly lands on a dish, possibly a different one.
         pendingBite = 0f;

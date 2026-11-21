@@ -30,6 +30,8 @@ public class FlyBodyMotion : MonoBehaviour
     [SerializeField, Range(0.01f, 1f)] float smoothTime = 0.15f;
 
     FlyController fly;
+    Animator animator;
+    Vector3 lastPosition;
     Vector3 restPosition;
     Quaternion restRotation;
     Quaternion lastRotation;
@@ -47,12 +49,9 @@ public class FlyBodyMotion : MonoBehaviour
     void Awake()
     {
         fly = GetComponent<FlyController>();
-        if (model == null)
-        {
-            Animator animator = GetComponentInChildren<Animator>();
-            if (animator != null)
-                model = animator.transform;
-        }
+        animator = GetComponentInChildren<Animator>();
+        if (model == null && animator != null)
+            model = animator.transform;
         if (model == null || model == transform)
         {
             // Fails open: body motion is cosmetic, so only this component stops; the fly stays controllable.
@@ -64,6 +63,7 @@ public class FlyBodyMotion : MonoBehaviour
         restPosition = model.localPosition;
         restRotation = model.localRotation;
         lastRotation = transform.rotation;
+        lastPosition = transform.position;
     }
 
     // LateUpdate so it reads the heading and velocity after FlyController has moved this frame.
@@ -74,10 +74,11 @@ public class FlyBodyMotion : MonoBehaviour
         if (deltaTime <= 0f)
             return;
 
-        bool isAirborne = fly.State == FlyController.MovementState.Flying;
+        Vector3 velocity = CurrentVelocity(deltaTime);
+        bool isAirborne = CurrentState() == FlyController.MovementState.Flying;
         airborne = Mathf.SmoothDamp(airborne, isAirborne ? 1f : 0f, ref airborneRate, smoothTime);
-        UpdateLean(isAirborne, deltaTime);
-        float bob = BobOffset(fly.FlyVelocity.magnitude, deltaTime);
+        UpdateLean(isAirborne, velocity, deltaTime);
+        float bob = BobOffset(velocity.magnitude, deltaTime);
 
         Quaternion lean = Quaternion.Euler(tilt * airborne, 0f, bank * airborne);
         // Rotating the rest position too pivots the model around this object's centre, not its own origin.
@@ -87,10 +88,9 @@ public class FlyBodyMotion : MonoBehaviour
 
     // Measured in the air only: landing zeroes the flight velocity in one frame, which would read as
     // a huge braking spike, and turning in place on the ground should not lean.
-    void UpdateLean(bool isAirborne, float deltaTime)
+    void UpdateLean(bool isAirborne, Vector3 velocity, float deltaTime)
     {
         float turnRate = TurnRate(deltaTime);
-        Vector3 velocity = fly.FlyVelocity;
         float forwardAcceleration = Vector3.Dot(velocity - lastVelocity, transform.forward) / deltaTime;
         lastVelocity = velocity;
 
@@ -99,6 +99,25 @@ public class FlyBodyMotion : MonoBehaviour
         float targetTilt = isAirborne ? Mathf.Clamp(forwardAcceleration * tiltPerAcceleration, -maxTilt, maxTilt) : 0f;
         bank = Mathf.SmoothDamp(bank, targetBank, ref bankRate, smoothTime);
         tilt = Mathf.SmoothDamp(tilt, targetTilt, ref tiltRate, smoothTime);
+    }
+
+    // On another player's copy FlyController is off (OwnerOnlyControls), so its State and FlyVelocity
+    // never change there. The state is read from the Animator instead, whose parameter NetworkAnimator
+    // keeps in step (the same as FlyAudio does), and the velocity is measured from how far the body
+    // moved, which NetworkTransform drives. Fails open: with no Animator, another player's fly simply
+    // does not lean or bob.
+    FlyController.MovementState CurrentState()
+    {
+        if (fly.enabled || animator == null)
+            return fly.State;
+        return (FlyController.MovementState)animator.GetInteger(FlyController.StateAnimParameter);
+    }
+
+    Vector3 CurrentVelocity(float deltaTime)
+    {
+        Vector3 moved = transform.position - lastPosition;
+        lastPosition = transform.position;
+        return fly.enabled ? fly.FlyVelocity : moved / deltaTime;
     }
 
     // Degrees per second around the fly's own up axis. Taken from the rotation change rather than the yaw

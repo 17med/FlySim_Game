@@ -13238,6 +13238,7 @@ GameObject:
   - component: {fileID: 6106061523611130558}
   - component: {fileID: 5114136880644660530}
   - component: {fileID: 1961676763775794988}
+  - component: {fileID: 6614781293041107329}
   - component: {fileID: 183008136669189248}
   - component: {fileID: 1220738853250852265}
   - component: {fileID: 4374765357930222248}
@@ -14020,3 +14021,23 @@ Transform:
   - {fileID: 3548050593120468059}
   m_Father: {fileID: 2045646360448215408}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6614781293041107329
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8944188680870611209}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d96e80c8d418e1d9082f2cb5ad50e8c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlyBodyMotion
+  model: {fileID: 0}
+  bankPerTurnRate: 0.1
+  maxBank: 15
+  tiltPerAcceleration: 0.5
+  maxTilt: 15
+  bobHeight: 0.03
+  bobFrequency: 0.8
+  smoothTime: 0.15

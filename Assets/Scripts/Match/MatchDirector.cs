@@ -8,10 +8,11 @@ using UnityEngine.SceneManagement;
 // The flies are after the food and the old man is defending it: clear every dish before the clock
 // runs out and the flies win, keep so much as a mouthful on a plate until it does and the human wins.
 //
-// The length comes from the host's settings (ten minutes at the shortest), handed over by the lobby.
-// It installs itself when a kitchen scene loads, the way PauseMenu does, so neither Kitchen nor
-// Kitchen_online needs anything in the scene and a scene played straight from the Editor still gets
-// a match. MatchNetwork, when the scene has one, makes the host's clock and verdict the room's.
+// The length comes from the host's settings (five minutes at the shortest), handed over by the lobby.
+// It installs itself when a kitchen scene loads, the way PauseMenu does, so a scene played straight
+// from the Editor still gets a match. Its HUD (MatchHud) is not made here: it is in each kitchen scene,
+// so its layout can be edited by hand. MatchNetwork, when the scene has one, makes the host's clock
+// and verdict the room's.
 public class MatchDirector : MonoBehaviour
 {
     const string PlayerActionMap = "Player";
@@ -51,10 +52,12 @@ public class MatchDirector : MonoBehaviour
         : CurrentPhase == Phase.HumanWon && GameSession.LocalRole == PlayerRole.Human;
 
     MatchNetwork network;
+    // Kept so OnDestroy unsubscribes from the same manager it subscribed to.
+    NetworkManager watchedNetwork;
     InputActionMap playerActions;
     float resultLeft;
     // The clock this machine counts down on its own. In a room MatchNetwork's is used instead, so the
-    // players do not drift apart over ten minutes; this is the fallback for a scene played on its own.
+    // players do not drift apart over a whole match; this is the fallback for a scene played on its own.
     float localSecondsLeft;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -81,8 +84,19 @@ public class MatchDirector : MonoBehaviour
         CollectDishes();
         localSecondsLeft = Mathf.Max(GameSession.MatchMinutes, GameSettings.MinMatchMinutes) * 60f;
         SecondsLeft = localSecondsLeft;
-        // The HUD reads this director through MatchDirector.Instance, so it needs nothing passed to it.
-        gameObject.AddComponent<MatchHud>();
+        // The HUD is part of the scene, laid out by hand, and reads this director through
+        // MatchDirector.Instance. Fails open: without one the match still plays, just with no clock or
+        // bar on screen, so it is a warning that says how to add it.
+        if (FindAnyObjectByType<MatchHud>(FindObjectsInactive.Include) == null)
+        {
+            Debug.LogWarning($"{nameof(MatchDirector)}: {SceneManager.GetActiveScene().name} has no {nameof(MatchHud)}, so there is no timer or couscous bar on screen. " +
+                             "Open the scene and run Tools > Match > Add HUD To Open Scene.");
+        }
+        watchedNetwork = NetworkManager.Singleton;
+        if (watchedNetwork != null)
+        {
+            watchedNetwork.OnClientDisconnectCallback += OnDisconnected;
+        }
     }
 
     void OnDestroy()
@@ -90,6 +104,10 @@ public class MatchDirector : MonoBehaviour
         if (Instance == this)
         {
             Instance = null;
+        }
+        if (watchedNetwork != null)
+        {
+            watchedNetwork.OnClientDisconnectCallback -= OnDisconnected;
         }
         // Leaving the scene with the result up must not leave the next one without input.
         if (IsOver)
@@ -192,10 +210,34 @@ public class MatchDirector : MonoBehaviour
         }
         // Only once: the load takes a frame or two and this runs every frame until the scene changes.
         resultLeft = float.MaxValue;
-        LeaveToMenu();
+        LeaveToMenu("");
     }
 
-    void LeaveToMenu()
+    // A client cut off from the host: the host quit, crashed or lost its connection. Without this the
+    // player was left in a kitchen nobody runs any more, with every body frozen or gone. The menu is
+    // the only place a new room can be made, so they go back there and are told why.
+    // Netcode raises this on a client before it starts shutting itself down, so ShutdownInProgress is
+    // only true here when this machine is the one leaving (pause menu, end of match), which is not an
+    // error. Only a client is ever cut off from the host; on the host this only reports other players.
+    void OnDisconnected(ulong clientId)
+    {
+        NetworkManager manager = watchedNetwork;
+        if (manager == null || manager.IsServer || manager.ShutdownInProgress || clientId != manager.LocalClientId)
+        {
+            return;
+        }
+        // The host ending the room after the result is up is the normal way a match finishes.
+        if (IsOver)
+        {
+            LeaveToMenu("");
+            return;
+        }
+        string reason = manager.DisconnectReason;
+        LeaveToMenu(string.IsNullOrEmpty(reason) ? "THE HOST LEFT THE GAME" : reason.ToUpperInvariant());
+    }
+
+    // returnReason is shown in the menu's error modal; empty for a normal ending.
+    void LeaveToMenu(string returnReason)
     {
         playerActions?.Enable();
         Time.timeScale = 1f;
@@ -204,6 +246,8 @@ public class MatchDirector : MonoBehaviour
             NetworkManager.Singleton.Shutdown();
         }
         GameSession.Reset();
+        // After Reset, which clears it.
+        GameSession.ReturnReason = returnReason;
         GameSceneManager.Instance.LoadMainMenu();
     }
 

@@ -43,10 +43,12 @@ public class GameSceneManager : MonoBehaviour
     void Awake()
     {
         // Loading the main menu a second time brings in a fresh manager with the scene; the one that
-        // survived the previous load wins and the newcomer removes itself.
+        // survived the previous load stays the manager. The newcomer is kept rather than destroyed,
+        // because the menu's buttons point at it: destroying it is what made QUIT do nothing once a
+        // game had been played. It is not DontDestroyOnLoad, so it goes with the menu scene, and
+        // LoadScene hands any load it is asked for to the real manager.
         if (instance != null && instance != this)
         {
-            Destroy(gameObject);
             return;
         }
         instance = this;
@@ -70,6 +72,13 @@ public class GameSceneManager : MonoBehaviour
 
     public void LoadScene(string sceneName)
     {
+        // A menu scene's own copy (see Awake) must not run the load: its coroutine would die with the
+        // scene it is unloading, half way through.
+        if (Instance != this)
+        {
+            Instance.LoadScene(sceneName);
+            return;
+        }
         // A double click on a button would otherwise start the same load twice.
         if (isLoading)
         {

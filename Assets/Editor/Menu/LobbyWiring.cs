@@ -76,6 +76,111 @@ public static class LobbyWiring
         Debug.Log($"Wire Lobby: {LobbyObjectName} and {MenuNetworkObjectName} are in {scene.name}, and the room panel is wired to {nameof(LobbyManager)}.");
     }
 
+    // ---- the error modal -----------------------------------------------------------------------
+
+    // Adds the "you were disconnected" modal to the menu as ordinary scene UI, wired to the connector,
+    // so it can be moved and restyled by hand afterwards. Made once: a modal already wired is left as
+    // it is. It goes last under the menu's canvas so it draws over everything, and its dim backdrop
+    // takes the clicks so nothing behind it can be pressed while it is up.
+    // Over this file's 400-line guideline (it already was): kept with the rest of the connector's
+    // wiring rather than split out, so everything Wire Lobby's connector needs is in one place.
+    [MenuItem("Tools/Main Menu/Add Error Modal")]
+    static void AddErrorModal()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        LocalNetworkConnector connector = Object.FindAnyObjectByType<LocalNetworkConnector>(FindObjectsInactive.Include);
+        if (scene.name != GameSceneManager.MainMenuScene || connector == null || connector.roomRoot == null)
+        {
+            Debug.LogError($"Add Error Modal: open {GameSceneManager.MainMenuScene} and run Tools > Main Menu > Wire Lobby first, so there is a wired {nameof(LocalNetworkConnector)} to show it.");
+            return;
+        }
+        if (connector.errorModalRoot != null)
+        {
+            Selection.activeGameObject = connector.errorModalRoot;
+            Debug.Log($"Add Error Modal: {connector.errorModalRoot.name} is already wired; its layout was left as it is.", connector.errorModalRoot);
+            return;
+        }
+        Canvas canvas = connector.roomRoot.GetComponentInParent<Canvas>(true);
+        if (canvas == null)
+        {
+            Debug.LogError("Add Error Modal: the room panel is not under a Canvas, so there is nowhere to put the modal.");
+            return;
+        }
+
+        GameObject modal = BuildErrorModal(canvas.rootCanvas.transform, connector);
+        Undo.RegisterCreatedObjectUndo(modal, "Add Error Modal");
+        EditorUtility.SetDirty(connector);
+        EditorSceneManager.MarkSceneDirty(scene);
+        Selection.activeGameObject = modal;
+        Debug.Log("Add Error Modal: Error_Modal is in the menu, switched off until it is needed. Tick it on to edit it, off again, then save (Ctrl+S).", modal);
+    }
+
+    static GameObject BuildErrorModal(Transform canvas, LocalNetworkConnector connector)
+    {
+        Image backdrop = NewModalImage("Error_Modal", canvas, new Color(0f, 0f, 0f, 0.78f));
+        backdrop.raycastTarget = true;
+        RectTransform backdropRect = backdrop.rectTransform;
+        backdropRect.anchorMin = Vector2.zero;
+        backdropRect.anchorMax = Vector2.one;
+        backdropRect.offsetMin = Vector2.zero;
+        backdropRect.offsetMax = Vector2.zero;
+        backdropRect.SetAsLastSibling();
+
+        Image panel = NewModalImage("Error_Panel", backdropRect, new Color(0.07f, 0.07f, 0.09f, 0.96f));
+        PlaceInModal(panel.rectTransform, 0f, 680f, 300f);
+
+        TMP_Text title = NewModalLabel("Error_Title", panel.transform, "DISCONNECTED", 40f, new Color(0.93f, 0.93f, 0.95f, 1f));
+        PlaceInModal(title.rectTransform, 95f, 620f, 50f);
+        TMP_Text message = NewModalLabel("Error_Message", panel.transform, "THE HOST LEFT THE GAME", 26f, new Color(0.72f, 0.72f, 0.78f, 1f));
+        message.textWrappingMode = TextWrappingModes.Normal;
+        PlaceInModal(message.rectTransform, 10f, 600f, 90f);
+
+        Image buttonImage = NewModalImage("Error_OK_Button", panel.transform, new Color(0.45f, 0.12f, 0.12f, 1f));
+        buttonImage.raycastTarget = true;
+        PlaceInModal(buttonImage.rectTransform, -95f, 220f, 60f);
+        Button ok = buttonImage.gameObject.AddComponent<Button>();
+        TMP_Text okLabel = NewModalLabel("Label", buttonImage.transform, "OK", 28f, new Color(0.93f, 0.93f, 0.95f, 1f));
+        PlaceInModal(okLabel.rectTransform, 0f, 220f, 60f);
+
+        Undo.RecordObject(connector, "Add Error Modal");
+        connector.errorModalRoot = backdrop.gameObject;
+        connector.errorMessageText = message;
+        connector.errorOkButton = ok;
+        backdrop.gameObject.SetActive(false);
+        return backdrop.gameObject;
+    }
+
+    static void PlaceInModal(RectTransform rect, float fromMiddle, float width, float height)
+    {
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = new Vector2(0f, fromMiddle);
+        rect.sizeDelta = new Vector2(width, height);
+    }
+
+    static Image NewModalImage(string name, Transform parent, Color color)
+    {
+        var imageObject = new GameObject(name, typeof(RectTransform));
+        imageObject.transform.SetParent(parent, false);
+        Image image = imageObject.AddComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    static TMP_Text NewModalLabel(string name, Transform parent, string content, float size, Color color)
+    {
+        var textObject = new GameObject(name, typeof(RectTransform));
+        textObject.transform.SetParent(parent, false);
+        TextMeshProUGUI text = textObject.AddComponent<TextMeshProUGUI>();
+        text.text = content;
+        text.fontSize = size;
+        text.color = color;
+        text.alignment = TextAlignmentOptions.Center;
+        text.raycastTarget = false;
+        return text;
+    }
+
     // ---- the pieces ----------------------------------------------------------------------------
 
     // The room itself. It needs a NetworkObject of its own, which is why it cannot live on the
