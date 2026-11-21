@@ -1021,7 +1021,7 @@ GameObject:
   - component: {fileID: 8513194898276064735}
   - component: {fileID: 2710838793700131298}
   m_Layer: 0
-  m_Name: Camera
+  m_Name: Fly_Camera
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1220,7 +1220,7 @@ GameObject:
   - component: {fileID: 7183152556154198827}
   - component: {fileID: 7515990406473907618}
   m_Layer: 0
-  m_Name: fly (2)
+  m_Name: Fly_Model
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1308,7 +1308,7 @@ GameObject:
   - component: {fileID: 1770556318203744052}
   - component: {fileID: 1756584987608209744}
   m_Layer: 5
-  m_Name: Image
+  m_Name: Spit_Frame
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2556,7 +2556,7 @@ GameObject:
   - component: {fileID: 4066712340897276243}
   - component: {fileID: 2154241611966801293}
   m_Layer: 5
-  m_Name: Image (2)
+  m_Name: Drop_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3132,7 +3132,7 @@ GameObject:
   m_Component:
   - component: {fileID: 346066384997115259}
   m_Layer: 0
-  m_Name: cmaercontroller
+  m_Name: Fly_CameraPivot_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3165,7 +3165,7 @@ GameObject:
   - component: {fileID: 1454297591056682792}
   - component: {fileID: 9035014830771754056}
   m_Layer: 5
-  m_Name: Image (1)
+  m_Name: Drop_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3337,7 +3337,7 @@ GameObject:
   - component: {fileID: 3364626597980482885}
   - component: {fileID: 1034813499365938297}
   m_Layer: 5
-  m_Name: Text (TMP) (1)
+  m_Name: Spit_Drops
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5697,7 +5697,7 @@ GameObject:
   - component: {fileID: 2429403927728550819}
   - component: {fileID: 4916610143048606956}
   m_Layer: 5
-  m_Name: Slider
+  m_Name: Spit_Charge
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5853,7 +5853,7 @@ GameObject:
   - component: {fileID: 3674089751466951376}
   - component: {fileID: 1074223037693550264}
   m_Layer: 5
-  m_Name: Image
+  m_Name: Drop_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -7041,7 +7041,7 @@ GameObject:
   - component: {fileID: 2185170977529234796}
   - component: {fileID: 4878159575210389517}
   m_Layer: 5
-  m_Name: Text (TMP)
+  m_Name: Spit_Label
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -7873,7 +7873,7 @@ GameObject:
   - component: {fileID: 2772335596065041637}
   - component: {fileID: 2023566311999557880}
   m_Layer: 5
-  m_Name: Image (1)
+  m_Name: Spit_Panel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -8388,7 +8388,7 @@ GameObject:
   - component: {fileID: 6525001288518062550}
   - component: {fileID: 2641934345767931692}
   m_Layer: 5
-  m_Name: Image (3)
+  m_Name: Drop_4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -8497,7 +8497,7 @@ GameObject:
   - component: {fileID: 2075029178571068358}
   - component: {fileID: 7946719134751692994}
   m_Layer: 5
-  m_Name: Image
+  m_Name: Aim_Reticle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -11936,7 +11936,7 @@ GameObject:
   - component: {fileID: 1748461327719359693}
   - component: {fileID: 4774260578203729714}
   m_Layer: 5
-  m_Name: Canvas
+  m_Name: Fly_HUD
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -12346,7 +12346,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2112003204617479307}
   m_Layer: 0
-  m_Name: cmaercontroller
+  m_Name: Fly_CameraPivot_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -13102,7 +13102,7 @@ GameObject:
   - component: {fileID: 5651381216782587332}
   - component: {fileID: 7639067395993441201}
   m_Layer: 0
-  m_Name: fly (1)
+  m_Name: Fly_Body
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

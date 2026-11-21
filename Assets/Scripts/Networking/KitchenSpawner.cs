@@ -4,12 +4,11 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 
 // Puts every player from the lobby into the online Kitchen as the body their role says: the human
-// gets the old man, every flyer gets a fly of their own.
-// Only the host spawns. It waits for Netcode to report that every player has finished loading the
-// scene, so nobody is handed a body in a scene they do not have yet. Each body is owned by its player,
-// which is what lets OwnerOnlyControls and the owner-driven NetworkTransform give it to them.
-// A plain MonoBehaviour rather than a NetworkBehaviour: it never sends anything itself, and an
-// in-scene NetworkObject would add a second thing that has to match between host and clients.
+// gets the old man, every flyer a fly of their own.
+// Only the host spawns, and only once Netcode reports that everyone has finished loading the scene.
+// Each body is owned by its player, which is what makes OwnerOnlyControls and the owner-driven
+// NetworkTransform hand it over.
+// A plain MonoBehaviour: it never sends anything itself, so it needs no NetworkObject of its own.
 public class KitchenSpawner : MonoBehaviour
 {
     [Tooltip("old_person Variant prefab (needs a NetworkObject and must be in DefaultNetworkPrefabs).")]
@@ -95,10 +94,8 @@ public class KitchenSpawner : MonoBehaviour
         }
     }
 
-    // The objects' NetworkTransforms are owner-driven, so whoever owns an object simulates it. Only
-    // the old man touches them, so he owns them all from the start: his grabs, throws and slaps run
-    // on his machine with no delay, and nothing ever has to change hands mid-throw. If he leaves,
-    // Netcode gives them back to the host.
+    // The objects' NetworkTransforms are owner-driven, and only the old man ever touches them, so he
+    // owns them all from the start: his grabs and throws run locally and never change hands mid-flight.
     void GiveProps(ulong humanClientId)
     {
         foreach (NetworkObject prop in props)

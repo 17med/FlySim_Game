@@ -1,13 +1,10 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-// Hands the role chosen in the lobby to the Kitchen: the player who took the human role walks in as
-// the old man, everyone else flies.
-// It hooks the scene load itself instead of living on a GameObject, so the Kitchen needs no setup and
-// no reference to the lobby - a scene played straight from the Editor simply never hears from it and
-// keeps working the way it always has.
-// Both rigs stay in the world; only their controls and camera move. Turning the body the player is
-// not using off would delete the other side of the game from the scene.
+// Hands the role chosen in the lobby to the Kitchen: the human walks in as the old man, everyone else
+// flies. It hooks the scene load rather than living on a GameObject, so the Kitchen needs no setup and
+// a scene played straight from the Editor simply never hears from it.
+// Both rigs stay in the world; only their controls and camera move.
 public static class KitchenRoles
 {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -52,7 +49,7 @@ public static class KitchenRoles
         // listening at once would have the fly and the old man move together.
         foreach (MonoBehaviour behaviour in rig.GetComponentsInChildren<MonoBehaviour>(true))
         {
-            if (behaviour is FlyController || behaviour is OldPersonFPSController || behaviour is OrbitCamera || behaviour is AimShootsystem)
+            if (behaviour is FlyController || behaviour is OldPersonFPSController || behaviour is OrbitCamera || behaviour is FlyAiming)
             {
                 behaviour.enabled = played;
             }

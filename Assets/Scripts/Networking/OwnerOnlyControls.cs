@@ -2,12 +2,10 @@ using Unity.Netcode;
 using UnityEngine;
 
 // Makes a spawned body playable only on the machine of the player who owns it.
-// Every machine holds a copy of every player's body. The controllers, action scripts, cameras, audio
-// listeners and HUD all read this machine's input or draw to this machine's screen, so on any copy
-// that belongs to somebody else they are switched off and the body is moved by the network instead.
-// They are switched off here rather than saved off in the prefab because the same prefabs sit in the
-// offline Kitchen, where no network spawn ever happens and they have to keep working as they are.
-// The list is filled by Tools > Kitchen Online > Wire Network Players and can be edited in the Inspector.
+// Controllers, cameras, audio listeners and HUD all read this machine's input or draw to its screen,
+// so on somebody else's copy they are switched off and the body is moved by the network instead.
+// Switched off here rather than in the prefab, because the same prefabs sit in the offline Kitchen
+// where nothing is ever spawned. The list is filled by Tools > Kitchen Online > Wire Network Players.
 public class OwnerOnlyControls : NetworkBehaviour
 {
     [Tooltip("Switched off on every copy of this body that another player owns: controllers, action scripts, cameras, audio listeners, HUD canvases.")]
