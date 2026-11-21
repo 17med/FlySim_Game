@@ -1208,6 +1208,135 @@ MonoBehaviour:
   maxRoll: 1.5
   frequency: 25
   recoverySpeed: 4
+--- !u!1 &584237403957449266
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2708662301364819768}
+  - component: {fileID: 4944874256835711635}
+  m_Layer: 0
+  m_Name: SFX_Eat
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2708662301364819768
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 584237403957449266}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6106061523611130558}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!82 &4944874256835711635
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 584237403957449266}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_Resource: {fileID: 0}
+  m_PlayOnAwake: 0
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1 &614409299318004500
 GameObject:
   m_ObjectHideFlags: 0
@@ -3542,6 +3671,7 @@ GameObject:
   - component: {fileID: 4952069765361306902}
   - component: {fileID: 4170307769745031335}
   - component: {fileID: 862668503784722276}
+  - component: {fileID: 5084734229767005869}
   m_Layer: 0
   m_Name: fly
   m_TagString: Untagged
@@ -3667,6 +3797,19 @@ MonoBehaviour:
   maxObjectKnockSpeed: 60
   searchRadius: 12
   objectHitCooldown: 0.5
+--- !u!114 &5084734229767005869
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2433297912782567719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16ed7cf9851247f47b0a84934443cd52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlyEatNetwork
+  ShowTopMostFoldoutHeaderGroup: 1
 --- !u!1 &2573173314928979463
 GameObject:
   m_ObjectHideFlags: 0
@@ -13101,6 +13244,7 @@ GameObject:
   - component: {fileID: 5605364286249622796}
   - component: {fileID: 5651381216782587332}
   - component: {fileID: 7639067395993441201}
+  - component: {fileID: 5256911397406625124}
   m_Layer: 0
   m_Name: Fly_Body
   m_TagString: Untagged
@@ -13129,6 +13273,7 @@ Transform:
   - {fileID: 6524195352894563554}
   - {fileID: 683595382539024017}
   - {fileID: 3012065611774875099}
+  - {fileID: 2708662301364819768}
   m_Father: {fileID: 8203619415184745260}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!143 &5114136880644660530
@@ -13445,6 +13590,30 @@ MonoBehaviour:
   - {fileID: 8300000, guid: bcf8ae1c8cd78a473bbe83a9857dca3a, type: 3}
   - {fileID: 8300000, guid: 1308da6311dfcd10aafe0ec59b5e3399, type: 3}
   flyVolume: 1
+--- !u!114 &5256911397406625124
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8944188680870611209}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6dbfe09c625da60349ca6f1260583a6b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlyEating
+  model: {fileID: 0}
+  dipDistance: 0.06
+  dipAngle: 28
+  chewRate: 5
+  chewDepth: 0.35
+  dipFade: 0.15
+  eatSounds:
+  - {fileID: 8300000, guid: 96e89bf4d32898225adb0dd739362a3f, type: 3}
+  - {fileID: 8300000, guid: 8417be0720d8d1e11b02ed6e28970860, type: 3}
+  - {fileID: 8300000, guid: b292acd2d04cd4fddb8a588c6849ccdc, type: 3}
+  eatVolume: 1
+  eatSource: {fileID: 4944874256835711635}
 --- !u!1 &8960304764851288954
 GameObject:
   m_ObjectHideFlags: 0

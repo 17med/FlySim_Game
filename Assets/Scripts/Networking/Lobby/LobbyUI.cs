@@ -225,11 +225,13 @@ public class LobbyUI : MonoBehaviour
         }
         if (statusText != null)
         {
+            // The length is the host's settings value, so the other players are told it here rather
+            // than being left to guess how long the raid they are joining runs for.
             statusText.text = transientStatus != ""
                 ? transientStatus
                 : canStart
-                    ? $"READY  ·  {filled} OF {LobbyManager.MaxFlyers} FLYERS  ·  1 HUMAN"
-                    : reason;
+                    ? $"READY  ·  {filled} OF {LobbyManager.MaxFlyers} FLYERS  ·  1 HUMAN  ·  {manager.MatchMinutes} MIN RAID"
+                    : $"{reason}  ·  {manager.MatchMinutes} MIN RAID";
         }
     }
 

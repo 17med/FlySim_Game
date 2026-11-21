@@ -12,12 +12,20 @@ public static class GameSettings
     const string MusicVolumeKey = "Settings.MusicVolume";
     const string SfxVolumeKey = "Settings.SfxVolume";
     const string FullscreenKey = "Settings.Fullscreen";
+    const string MatchMinutesKey = "Settings.MatchMinutes";
     const string ScreenWidthKey = "Settings.ScreenWidth";
     const string ScreenHeightKey = "Settings.ScreenHeight";
     // The lobby shipped reading this key, so saved names survive the update.
     const string PlayerNameKey = "PlayerName";
 
     const float DefaultVolume = 0.8f;
+
+    // How long a raid lasts. The shortest match is ten minutes, which is the length the kitchen was
+    // balanced around: a fly needs roughly that long to clear a full couscous with the old man
+    // chasing it. The host can only ever make a match longer, never shorter.
+    public const int MinMatchMinutes = 10;
+    public const int MaxMatchMinutes = 30;
+    public const int DefaultMatchMinutes = 10;
 
     // Raised after any setting changes, so open sliders and playing sounds follow along.
     public static event Action Changed;
@@ -26,6 +34,7 @@ public static class GameSettings
     static float musicVolume = DefaultVolume;
     static float sfxVolume = DefaultVolume;
     static bool fullscreen = true;
+    static int matchMinutes = DefaultMatchMinutes;
     static Vector2Int resolution;
     static string playerName = "";
     static bool loaded;
@@ -46,6 +55,20 @@ public static class GameSettings
     {
         get { Load(); return sfxVolume; }
         set { Load(); sfxVolume = Mathf.Clamp01(value); PlayerPrefs.SetFloat(SfxVolumeKey, sfxVolume); Apply(); }
+    }
+
+    // How many minutes a raid runs for, as set in the settings panel. Only the host's value counts:
+    // LobbyManager sends it to everyone when the game starts, so one room plays one length.
+    public static int MatchMinutes
+    {
+        get { Load(); return matchMinutes; }
+        set
+        {
+            Load();
+            matchMinutes = Mathf.Clamp(value, MinMatchMinutes, MaxMatchMinutes);
+            PlayerPrefs.SetInt(MatchMinutesKey, matchMinutes);
+            Apply();
+        }
     }
 
     public static bool Fullscreen
@@ -147,6 +170,7 @@ public static class GameSettings
         musicVolume = PlayerPrefs.GetFloat(MusicVolumeKey, DefaultVolume);
         sfxVolume = PlayerPrefs.GetFloat(SfxVolumeKey, DefaultVolume);
         fullscreen = PlayerPrefs.GetInt(FullscreenKey, Screen.fullScreen ? 1 : 0) == 1;
+        matchMinutes = Mathf.Clamp(PlayerPrefs.GetInt(MatchMinutesKey, DefaultMatchMinutes), MinMatchMinutes, MaxMatchMinutes);
         resolution = new Vector2Int(PlayerPrefs.GetInt(ScreenWidthKey, Screen.width),
                                     PlayerPrefs.GetInt(ScreenHeightKey, Screen.height));
         playerName = Clean(PlayerPrefs.GetString(PlayerNameKey, ""));

@@ -14,7 +14,7 @@ using UnityEngine.UI;
 // unsaved changes. Running it again is safe: it reuses the rows and components it made before.
 public static class SettingsWiring
 {
-    const string MusicTrackPath = "Assets/sound/The Swarm Anthem.mp3";
+    const string MusicTrackPath = "Assets/audio/Music/The Swarm Anthem.mp3";
 
     const string UiRootName = "UI_Root";
     const string ModalName = "L9_Modal";
@@ -22,13 +22,15 @@ public static class SettingsWiring
     const string MusicRowName = "Row_MusicVolume";
     const string SfxRowName = "Row_SfxVolume";
     const string NameRowName = "Row_PlayerName";
+    const string MatchRowName = "Row_MatchLength";
+    const string MatchSliderName = "Match_Slider";
     const string SfxSliderName = "Sfx_Slider";
     const string NameInputName = "Name_Input";
     const string DividerName = "Divider";
     const string MusicObjectName = "Stage_Root";
 
     [MenuItem("Tools/Main Menu/Wire Settings")]
-    static void Wire()
+    internal static void Wire()
     {
         Scene scene = SceneManager.GetActiveScene();
         if (scene.name != GameSceneManager.MainMenuScene)
@@ -48,19 +50,20 @@ public static class SettingsWiring
 
         Slider sfxSlider = EnsureSfxRow(panel, musicRow);
         TMP_InputField nameInput = EnsureNameRow(scene, panel);
-        if (sfxSlider == null || nameInput == null)
+        Slider matchSlider = EnsureMatchRow(panel, musicRow, out TMP_Text matchLabel);
+        if (sfxSlider == null || nameInput == null || matchSlider == null)
         {
             return;
         }
 
-        if (!WireMenu(scene, uiRoot, modal, sfxSlider, nameInput) || !WireQuit(scene))
+        if (!WireMenu(scene, uiRoot, modal, sfxSlider, nameInput, matchSlider, matchLabel) || !WireQuit(scene))
         {
             return;
         }
         WireMusic(scene);
 
         EditorSceneManager.MarkSceneDirty(scene);
-        Debug.Log($"Wire Settings: {nameof(SettingsMenu)} is on {UiRootName}, the panel has its sound effects and name rows, and the menu music follows the music volume. Save {scene.name} (Ctrl+S).");
+        Debug.Log($"Wire Settings: {nameof(SettingsMenu)} is on {UiRootName}, the panel has its sound effects, name and match length rows, and the menu music follows the music volume. Save {scene.name} (Ctrl+S).");
     }
 
     // ---- the rows the panel was missing --------------------------------------------------------
@@ -92,6 +95,46 @@ public static class SettingsWiring
             return null;
         }
         slider.gameObject.name = SfxSliderName;
+        return slider;
+    }
+
+    // How long a raid runs for: another copy of a volume row, with the slider counting whole minutes
+    // instead of a level. The label carries the number ("MATCH LENGTH  ·  10 MIN"), which SettingsMenu
+    // rewrites as the slider moves, so the row needs no second label of its own.
+    static Slider EnsureMatchRow(GameObject panel, GameObject musicRow, out TMP_Text label)
+    {
+        label = null;
+        GameObject row = ChildIn(panel, MatchRowName);
+        if (row == null)
+        {
+            row = Object.Instantiate(musicRow, panel.transform);
+            row.name = MatchRowName;
+            Undo.RegisterCreatedObjectUndo(row, "Wire Settings");
+            // Last of the rows: it is about the game rather than about this machine.
+            row.transform.SetAsLastSibling();
+            GrowPanel(panel, row);
+        }
+
+        label = row.GetComponentInChildren<TMP_Text>(true);
+        if (label != null)
+        {
+            Undo.RecordObject(label, "Wire Settings");
+            label.gameObject.name = $"{MatchRowName}_Label";
+            label.text = $"MATCH LENGTH  ·  {GameSettings.MatchMinutes} MIN";
+        }
+        Slider slider = row.GetComponentInChildren<Slider>(true);
+        if (slider == null)
+        {
+            Debug.LogError($"Wire Settings: the copy of {MusicRowName} has no Slider, so there is nothing to set the match length with.");
+            return null;
+        }
+        Undo.RecordObject(slider, "Wire Settings");
+        slider.gameObject.name = MatchSliderName;
+        // Set here as well as at runtime, so the row reads sensibly in the Editor before Play.
+        slider.minValue = GameSettings.MinMatchMinutes;
+        slider.maxValue = GameSettings.MaxMatchMinutes;
+        slider.wholeNumbers = true;
+        slider.value = GameSettings.MatchMinutes;
         return slider;
     }
 
@@ -175,7 +218,8 @@ public static class SettingsWiring
 
     // ---- the script behind the panel -----------------------------------------------------------
 
-    static bool WireMenu(Scene scene, GameObject uiRoot, GameObject modal, Slider sfxSlider, TMP_InputField nameInput)
+    static bool WireMenu(Scene scene, GameObject uiRoot, GameObject modal, Slider sfxSlider, TMP_InputField nameInput,
+                         Slider matchSlider, TMP_Text matchLabel)
     {
         SettingsMenu menu = uiRoot.GetComponent<SettingsMenu>();
         if (menu == null)
@@ -194,6 +238,8 @@ public static class SettingsWiring
         menu.masterSlider = ComponentIn<Slider>(scene, "Master_Slider");
         menu.musicSlider = ComponentIn<Slider>(scene, "Music_Slider");
         menu.sfxSlider = sfxSlider;
+        menu.matchLengthSlider = matchSlider;
+        menu.matchLengthLabel = matchLabel;
 
         if (menu.openButton == null || menu.masterSlider == null || menu.musicSlider == null)
         {

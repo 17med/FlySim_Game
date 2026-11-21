@@ -20,6 +20,11 @@ public static class GameSession
     // own, which is the case single player code paths should keep working for.
     public static bool StartedFromLobby { get; set; }
 
+    // How long this match runs for, in minutes. The host's settings value, sent to everyone by
+    // LobbyManager just before the Kitchen loads, so one room plays one length however each player
+    // has their own settings. The settings default when the Kitchen is played on its own.
+    public static int MatchMinutes { get; set; } = GameSettings.DefaultMatchMinutes;
+
     // Host only: every player's role by client id. LocalRole is all a client needs, but the host
     // spawns everyone's body (KitchenSpawner) after the lobby that knew the roster is gone.
     static readonly Dictionary<ulong, PlayerRole> roles = new Dictionary<ulong, PlayerRole>();
@@ -38,6 +43,7 @@ public static class GameSession
     {
         LocalRole = PlayerRole.Flyer;
         StartedFromLobby = false;
+        MatchMinutes = GameSettings.DefaultMatchMinutes;
         roles.Clear();
     }
 }

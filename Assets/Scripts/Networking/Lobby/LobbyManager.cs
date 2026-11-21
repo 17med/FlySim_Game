@@ -52,6 +52,12 @@ public class LobbyManager : NetworkBehaviour
     // The roster, in join order. Server writes, everyone reads.
     readonly NetworkList<LobbyMember> members = new NetworkList<LobbyMember>();
 
+    // How long the match will run for, in minutes. The host's own settings value: every player has
+    // their own, and a room has to agree on one, so the host's is the one the room plays and everyone
+    // else is shown it in the room bar. Server writes, everyone reads.
+    readonly NetworkVariable<int> matchMinutes =
+        new NetworkVariable<int>(GameSettings.DefaultMatchMinutes, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
     // Raised on every machine whenever the roster changes, including the first fill on join.
     public event Action RosterChanged;
     // Raised on the machine being asked to swap: who is asking, their name, and whether saying yes
@@ -69,6 +75,9 @@ public class LobbyManager : NetworkBehaviour
     float pendingExpiresAt;
 
     public int MemberCount => members.Count;
+
+    // The length of the match this room will play, in minutes, as the host has it set.
+    public int MatchMinutes => matchMinutes.Value;
 
     public LobbyMember GetMember(int index) => members[index];
 
@@ -153,9 +162,13 @@ public class LobbyManager : NetworkBehaviour
     {
         Instance = this;
         members.OnListChanged += OnMembersChanged;
+        // The room bar shows the length, so a change to it has to redraw the panel just like a
+        // roster change does.
+        matchMinutes.OnValueChanged += OnMatchMinutesChanged;
 
         if (IsServer)
         {
+            matchMinutes.Value = GameSettings.MatchMinutes;
             // The host's own client is already connected by the time this object spawns, so seat
             // everyone who is in before subscribing for the ones still to come.
             foreach (ulong clientId in NetworkManager.ConnectedClientsIds)
@@ -175,6 +188,7 @@ public class LobbyManager : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         members.OnListChanged -= OnMembersChanged;
+        matchMinutes.OnValueChanged -= OnMatchMinutesChanged;
         if (IsServer && NetworkManager != null)
         {
             NetworkManager.OnClientConnectedCallback -= Seat;
@@ -188,7 +202,17 @@ public class LobbyManager : NetworkBehaviour
 
     void Update()
     {
-        if (!IsServer || !hasPendingRequest || Time.time < pendingExpiresAt)
+        if (!IsServer)
+        {
+            return;
+        }
+        // The host can open the settings panel with the room already up, so the length is followed
+        // rather than read once: the others see it change as it is dragged.
+        if (matchMinutes.Value != GameSettings.MatchMinutes)
+        {
+            matchMinutes.Value = GameSettings.MatchMinutes;
+        }
+        if (!hasPendingRequest || Time.time < pendingExpiresAt)
         {
             return;
         }
@@ -201,6 +225,11 @@ public class LobbyManager : NetworkBehaviour
     }
 
     void OnMembersChanged(NetworkListEvent<LobbyMember> change)
+    {
+        RosterChanged?.Invoke();
+    }
+
+    void OnMatchMinutesChanged(int previous, int current)
     {
         RosterChanged?.Invoke();
     }
@@ -457,19 +486,21 @@ public class LobbyManager : NetworkBehaviour
         {
             GameSession.SetRole(member.ClientId, member.Role);
         }
-        // Every machine stores its own role first: once the scene load starts, this lobby is gone and
-        // the Kitchen has nothing left to ask.
-        HandOverToKitchenRpc();
+        // Every machine stores its own role and the match length first: once the scene load starts,
+        // this lobby is gone and the Kitchen has nothing left to ask.
+        HandOverToKitchenRpc(matchMinutes.Value);
         // Netcode's scene manager (not GameSceneManager) loads the Kitchen, because the clients have
         // to be taken along and kept in step with the host.
         NetworkManager.SceneManager.LoadScene(GameSceneManager.KitchenOnlineScene, LoadSceneMode.Single);
     }
 
     [Rpc(SendTo.Everyone)]
-    void HandOverToKitchenRpc()
+    void HandOverToKitchenRpc(int minutes)
     {
         GameSession.LocalRole = LocalRole;
         GameSession.StartedFromLobby = true;
+        // The host's length, not this machine's setting: MatchDirector reads it in the Kitchen.
+        GameSession.MatchMinutes = minutes;
         // Gameplay locks the cursor; the menu had it free.
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;

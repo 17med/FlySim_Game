@@ -28,6 +28,12 @@ public class SettingsMenu : MonoBehaviour
     public Slider musicSlider;
     public Slider sfxSlider;
 
+    [Header("Match")]
+    [Tooltip("How many minutes a raid runs for, in whole minutes from 10 to 30. Only the host's value counts; the lobby sends it to the room.")]
+    public Slider matchLengthSlider;
+    [Tooltip("The row's own label, rewritten to read \"MATCH LENGTH  ·  12 MIN\" so the number is visible while dragging.")]
+    public TMP_Text matchLengthLabel;
+
     Vector2Int[] resolutions = new Vector2Int[0];
     // Set while the controls are being filled in from GameSettings, so their change callbacks do not
     // write the value straight back and fight the player's drag.
@@ -62,6 +68,7 @@ public class SettingsMenu : MonoBehaviour
         Listen(masterSlider, value => GameSettings.MasterVolume = value);
         Listen(musicSlider, value => GameSettings.MusicVolume = value);
         Listen(sfxSlider, value => GameSettings.SfxVolume = value);
+        ListenMatchLength();
         if (fullscreenToggle != null)
         {
             fullscreenToggle.onValueChanged.AddListener(value =>
@@ -139,6 +146,11 @@ public class SettingsMenu : MonoBehaviour
         {
             fullscreenToggle.SetIsOnWithoutNotify(GameSettings.Fullscreen);
         }
+        if (matchLengthSlider != null)
+        {
+            matchLengthSlider.SetValueWithoutNotify(GameSettings.MatchMinutes);
+        }
+        ShowMatchLength(GameSettings.MatchMinutes);
         if (resolutionDropdown != null)
         {
             resolutionDropdown.SetValueWithoutNotify(CurrentResolutionIndex());
@@ -193,6 +205,36 @@ public class SettingsMenu : MonoBehaviour
         GameSettings.PlayerName = typed;
         // Shows what was actually kept: trimmed, upper case and cut to length.
         nameInput.SetTextWithoutNotify(GameSettings.PlayerName);
+    }
+
+    // Its own binding rather than Listen's: this slider counts whole minutes from 10 to 30 instead
+    // of running 0 to 1, and the row's label has to show the number as it is dragged.
+    void ListenMatchLength()
+    {
+        if (matchLengthSlider == null)
+        {
+            return;
+        }
+        matchLengthSlider.minValue = GameSettings.MinMatchMinutes;
+        matchLengthSlider.maxValue = GameSettings.MaxMatchMinutes;
+        matchLengthSlider.wholeNumbers = true;
+        matchLengthSlider.onValueChanged.AddListener(value =>
+        {
+            int minutes = Mathf.RoundToInt(value);
+            if (!filling)
+            {
+                GameSettings.MatchMinutes = minutes;
+            }
+            ShowMatchLength(minutes);
+        });
+    }
+
+    void ShowMatchLength(int minutes)
+    {
+        if (matchLengthLabel != null)
+        {
+            matchLengthLabel.text = $"MATCH LENGTH  ·  {minutes} MIN";
+        }
     }
 
     void Listen(Slider slider, UnityEngine.Events.UnityAction<float> set)
