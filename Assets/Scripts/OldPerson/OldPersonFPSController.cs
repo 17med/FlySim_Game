@@ -18,8 +18,9 @@ public class OldPersonFPSController : MonoBehaviour
     const string JumpActionName = "Player/Jump";
     const string SprintActionName = "Player/Sprint";
     // Small constant push into the ground while standing, so isGrounded stays true every frame
-    // instead of flickering, and walking off an edge starts falling immediately.
-    const float GroundStickSpeed = 2f;
+    // instead of flickering, and walking off an edge starts falling immediately. In metres per
+    // second, like every other speed here.
+    const float GroundStickSpeed = 0.07f;
     // Float parameter on old_person.controller: above 0.1 plays Walk, below plays Idle.
     // Public so OldPersonFootsteps can read it on other players' copies, where this component is off.
     public static readonly int SpeedAnimParameter = Animator.StringToHash("Speed");
@@ -28,9 +29,18 @@ public class OldPersonFPSController : MonoBehaviour
     [SerializeField] Camera viewCamera;
     [Tooltip("The old person's Animator (with the float parameter \"Speed\"). Found automatically if left empty.")]
     [SerializeField] Animator animator;
-    [SerializeField] float walkSpeed = 1.5f;
-    [SerializeField] float sprintSpeed = 3f;
+    // Every distance here is in real-world metres and multiplied by the body's own scale when it is
+    // used, because the house is built at 45 units to the metre and the old man is scaled to match.
+    // Walk Speed and Sprint Speed used to be in units while Gravity and Jump Height were in metres,
+    // so he fell at 9.81 units/s² - a third of a metre per second² in his own house - drifting down
+    // from a counter in slow motion, and his 0.6 unit jump lifted him just over a centimetre.
+    [Tooltip("Metres per second.")]
+    [SerializeField] float walkSpeed = 0.83f;
+    [Tooltip("Metres per second while Shift is held.")]
+    [SerializeField] float sprintSpeed = 1.67f;
+    [Tooltip("How high a jump carries him, in metres.")]
     [SerializeField] float jumpHeight = 0.6f;
+    [Tooltip("Metres per second²; -9.81 is real gravity.")]
     [SerializeField] float gravity = -9.81f;
     [Tooltip("Same scale as OrbitCamera's Mouse Sensitivity, so both players feel alike.")]
     [SerializeField] float mouseSensitivity = 0.1f;
@@ -54,6 +64,8 @@ public class OldPersonFPSController : MonoBehaviour
     [SerializeField] string firstPersonBodyLayer = "FirstPersonBody";
 
     CharacterController controller;
+    // Units per metre for this body: how much of the world one of his own metres covers.
+    float bodyScale;
     Transform neckBone;
     Transform headBone;
     InputAction moveAction;
@@ -70,6 +82,9 @@ public class OldPersonFPSController : MonoBehaviour
     void Awake()
     {
         controller = GetComponent<CharacterController>();
+        // Read once: nothing rescales him at runtime. Guarded against a zero scale, which would
+        // leave him unable to move or fall with no hint as to why.
+        bodyScale = Mathf.Max(Mathf.Abs(transform.lossyScale.y), 0.0001f);
         // Throws if an action is missing: a player that silently ignores a control is worse than a clear error.
         moveAction = InputSystem.actions.FindAction(MoveActionName, throwIfNotFound: true);
         lookAction = InputSystem.actions.FindAction(LookActionName, throwIfNotFound: true);
@@ -235,7 +250,7 @@ public class OldPersonFPSController : MonoBehaviour
     // Returns the horizontal speed actually moved, for the walk animation.
     float Move(Vector2 move)
     {
-        float speed = sprintAction.IsPressed() ? sprintSpeed : walkSpeed;
+        float speed = (sprintAction.IsPressed() ? sprintSpeed : walkSpeed) * bodyScale;
         // ClampMagnitude: diagonal keys would otherwise walk ~1.4x faster than straight ahead.
         Vector3 horizontal = transform.TransformDirection(new Vector3(move.x, 0f, move.y));
         horizontal = Vector3.ClampMagnitude(horizontal, 1f) * speed;
@@ -254,12 +269,12 @@ public class OldPersonFPSController : MonoBehaviour
     {
         if (!controller.isGrounded)
         {
-            verticalVelocity += gravity * Time.deltaTime;
+            verticalVelocity += gravity * bodyScale * Time.deltaTime;
             return;
         }
-        // Jump speed for the chosen height: v = sqrt(2 * h * g).
+        // Jump speed for the chosen height: v = sqrt(2 * h * g), in metres, then put into his scale.
         verticalVelocity = jumpAction.WasPressedThisFrame()
-            ? Mathf.Sqrt(2f * jumpHeight * -gravity)
-            : -GroundStickSpeed;
+            ? Mathf.Sqrt(2f * jumpHeight * -gravity) * bodyScale
+            : -GroundStickSpeed * bodyScale;
     }
 }

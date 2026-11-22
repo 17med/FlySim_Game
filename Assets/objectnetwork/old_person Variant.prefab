@@ -1954,15 +1954,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3909799696024920188, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       propertyPath: m_LocalScale.x
-      value: 30
+      value: 45
       objectReference: {fileID: 0}
     - target: {fileID: 3909799696024920188, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       propertyPath: m_LocalScale.y
-      value: 30
+      value: 45
       objectReference: {fileID: 0}
     - target: {fileID: 3909799696024920188, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       propertyPath: m_LocalScale.z
-      value: 30
+      value: 45
       objectReference: {fileID: 0}
     - target: {fileID: 3909799696024920188, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       propertyPath: m_LocalPosition.x
@@ -2126,6 +2126,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 4398247409588550342, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       insertIndex: -1
       addedObject: {fileID: 3177570117078012117}
+    - targetCorrespondingSourceObject: {fileID: 4398247409588550342, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1226455546149983331}
     - targetCorrespondingSourceObject: {fileID: 3653998066442634814, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       insertIndex: -1
       addedObject: {fileID: 5331846117834799652}
@@ -2184,8 +2187,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::OldPersonFPSController
   viewCamera: {fileID: 681239848016560887}
   animator: {fileID: 1847940693147353895}
-  walkSpeed: 25
-  sprintSpeed: 50
+  walkSpeed: 0.83
+  sprintSpeed: 1.67
   jumpHeight: 0.6
   gravity: -9.81
   mouseSensitivity: 0.1
@@ -2570,6 +2573,28 @@ MonoBehaviour:
   popStartScale: 0.6
   slideSpeed: 12
   maxSplats: 12
+--- !u!114 &1226455546149983331
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4904077209020662759}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a9cc098c1a3f25436adfd18fa0ddec6d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerNameTag
+  ShowTopMostFoldoutHeaderGroup: 1
+  heightAboveBody: 0.25
+  screenShare: 0.028
+  hideBeyond: 600
+  hideBehindWalls: 1
+  wallLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  textColor: {r: 1, g: 0.95, b: 0.75, a: 1}
+  outlineWidth: 0.2
 --- !u!1 &5454674350454980383 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3653998066442634814, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}

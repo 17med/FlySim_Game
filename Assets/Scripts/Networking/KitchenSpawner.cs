@@ -18,12 +18,15 @@ public class KitchenSpawner : MonoBehaviour
     [SerializeField] Transform humanSpawn;
     [Tooltip("Flies are spread over these in turn. More flies than points: the extra ones stand beside the point.")]
     [SerializeField] Transform[] flySpawns = new Transform[0];
-    [Tooltip("Sideways gap, in metres, between flies that share a spawn point.")]
-    [SerializeField] float flySpacing = 0.5f;
+    [Tooltip("Sideways gap between flies that share a spawn point, as a multiple of the fly's own width. Below 1 they are spawned inside each other and shove each other apart.")]
+    [SerializeField, Min(1f)] float flySpacing = 1.5f;
     [Tooltip("The kitchen's physics objects. All of them are handed to the human player, the only one who grabs, throws and slaps them.")]
     [SerializeField] NetworkObject[] props = new NetworkObject[0];
 
     int fliesSpawned;
+    // The fly prefab's own width in units, measured once. Nothing to do with the kitchen's scale: it
+    // is how far two flies have to stand apart not to overlap.
+    float flyWidth;
 
     void Awake()
     {
@@ -111,8 +114,24 @@ public class KitchenSpawner : MonoBehaviour
     {
         int index = fliesSpawned++;
         Transform point = flySpawns[index % flySpawns.Length];
-        offset = point.right * (flySpacing * (index / flySpawns.Length));
+        // Measured in fly widths, not in units: the gap was 0.5 units while the fly is 2 units
+        // across, so the third and fourth flyers were spawned inside the first two and the
+        // CharacterControllers flung them apart the moment the match started.
+        offset = point.right * (FlyWidth() * flySpacing * (index / flySpawns.Length));
         return point;
+    }
+
+    // The widest the fly's own collider is, in units. Falls back to the gap being counted in units
+    // when the prefab has no CharacterController, which is the old behaviour rather than no gap.
+    float FlyWidth()
+    {
+        if (flyWidth > 0f)
+        {
+            return flyWidth;
+        }
+        CharacterController body = flyPrefab != null ? flyPrefab.GetComponentInChildren<CharacterController>(true) : null;
+        flyWidth = body != null ? body.radius * 2f * Mathf.Abs(body.transform.lossyScale.x) : 1f;
+        return flyWidth;
     }
 
     // Checked once on the host before anyone loads in, so a missing reference is one clear error at

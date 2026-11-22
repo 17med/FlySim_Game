@@ -36,6 +36,9 @@ public class FlyBodyMotion : MonoBehaviour
     Quaternion restRotation;
     Quaternion lastRotation;
     Vector3 lastVelocity;
+    // Another player's fly only: the measured velocity, smoothed, and SmoothDamp's state for it.
+    Vector3 measuredVelocity;
+    Vector3 measuredVelocityRate;
     // 0 on the ground, 1 in the air; scales all motion so it fades in and out instead of popping.
     float airborne;
     float bank;
@@ -117,7 +120,16 @@ public class FlyBodyMotion : MonoBehaviour
     {
         Vector3 moved = transform.position - lastPosition;
         lastPosition = transform.position;
-        return fly.enabled ? fly.FlyVelocity : moved / deltaTime;
+        if (fly.enabled)
+            return fly.FlyVelocity;
+
+        // Another player's fly: the velocity has to be measured from how far the body moved, and
+        // NetworkTransform moves it in steps between network ticks. The lean follows the velocity
+        // and the nose tilt follows its rate of change, so feeding the raw measurement in
+        // differentiated that stepping twice and shook the model where the owner saw smooth flight.
+        // Smoothed first, the lean follows the flight instead of the packets.
+        measuredVelocity = Vector3.SmoothDamp(measuredVelocity, moved / deltaTime, ref measuredVelocityRate, smoothTime);
+        return measuredVelocity;
     }
 
     // Degrees per second around the fly's own up axis. Taken from the rotation change rather than the yaw

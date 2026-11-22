@@ -3672,6 +3672,7 @@ GameObject:
   - component: {fileID: 4170307769745031335}
   - component: {fileID: 862668503784722276}
   - component: {fileID: 5084734229767005869}
+  - component: {fileID: 6632021358711766074}
   m_Layer: 0
   m_Name: fly
   m_TagString: Untagged
@@ -3810,6 +3811,28 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FlyEatNetwork
   ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &6632021358711766074
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2433297912782567719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a9cc098c1a3f25436adfd18fa0ddec6d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerNameTag
+  ShowTopMostFoldoutHeaderGroup: 1
+  heightAboveBody: 0.25
+  screenShare: 0.028
+  hideBeyond: 600
+  hideBehindWalls: 1
+  wallLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  textColor: {r: 1, g: 0.95, b: 0.75, a: 1}
+  outlineWidth: 0.2
 --- !u!1 &2573173314928979463
 GameObject:
   m_ObjectHideFlags: 0
@@ -13335,6 +13358,26 @@ MonoBehaviour:
   knockAirDrag: 0.5
   knockBounce: 0.4
   tumbleSpeed: 720
+--- !u!114 &6614781293041107329
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8944188680870611209}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d96e80c8d418e1d9082f2cb5ad50e8c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlyBodyMotion
+  model: {fileID: 0}
+  bankPerTurnRate: 0.1
+  maxBank: 15
+  tiltPerAcceleration: 0.5
+  maxTilt: 15
+  bobHeight: 0.03
+  bobFrequency: 0.8
+  smoothTime: 0.15
 --- !u!114 &183008136669189248
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -14021,23 +14064,3 @@ Transform:
   - {fileID: 3548050593120468059}
   m_Father: {fileID: 2045646360448215408}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &6614781293041107329
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8944188680870611209}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d96e80c8d418e1d9082f2cb5ad50e8c4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::FlyBodyMotion
-  model: {fileID: 0}
-  bankPerTurnRate: 0.1
-  maxBank: 15
-  tiltPerAcceleration: 0.5
-  maxTilt: 15
-  bobHeight: 0.03
-  bobFrequency: 0.8
-  smoothTime: 0.15

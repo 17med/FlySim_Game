@@ -26,7 +26,8 @@ public static class KitchenOnlineWiring
     // Everything on a body that reads this machine's input or draws to its screen.
     // ScreenFade, SpinObject, SpitInterface and OldPersonSpitScreen are left out: they only animate the
     // HUD, which the Canvas entry already hides. OldPersonSlap and OldPersonHoldArm stay on, because
-    // other players' copies replay the arm through them and neither reads input there.
+    // other players' copies replay the arm through them and neither reads input there. PlayerNameTag
+    // stays on for the same reason: a name tag only exists on the copies somebody else is looking at.
     static readonly Type[] OwnerOnlyTypes =
     {
         typeof(FlyController), typeof(OldPersonFPSController), typeof(OrbitCamera), typeof(FlyAiming),
@@ -44,8 +45,8 @@ public static class KitchenOnlineWiring
             return;
         }
 
-        bool prefabsWired = WirePrefab(FlyPrefabPath, typeof(FlyController), typeof(FlySpitNetwork), typeof(FlyKnockbackNetwork))
-                            && WirePrefab(HumanPrefabPath, typeof(OldPersonFPSController), typeof(OldPersonArmNetwork), typeof(OldPersonSpitNetwork))
+        bool prefabsWired = WirePrefab(FlyPrefabPath, typeof(FlyController), typeof(FlySpitNetwork), typeof(FlyKnockbackNetwork), typeof(PlayerNameTag))
+                            && WirePrefab(HumanPrefabPath, typeof(OldPersonFPSController), typeof(OldPersonArmNetwork), typeof(OldPersonSpitNetwork), typeof(PlayerNameTag))
                             && RegisterPrefabs();
         if (!prefabsWired)
         {

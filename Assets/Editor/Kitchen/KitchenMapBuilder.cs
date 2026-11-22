@@ -26,9 +26,14 @@ public partial class KitchenMapBuilder
     const string ToonShaderName = "FlySimulator/StylizedToon";
     // Only for glowing lamp shades: the toon shader has no emission.
     const string LitShaderName = "Universal Render Pipeline/Lit";
-    // The fly's collider is 0.4 m across, so a real-size house would be cramped: at 10x a counter is
-    // 9 m high. The FBX files are in centimetres and Unity already imports them at real size.
-    const float WorldScale = 10f;
+    // Units per real-world metre: the whole house is blown up by this, so the fly - 2 units across,
+    // and not resized with it - has room to fly in a kitchen that is only metres wide in its own
+    // terms. The FBX files are in centimetres and Unity already imports them at real size.
+    // Everything sized in house metres is scaled by it, the old man included; the fly is the one
+    // thing that keeps its own size, which is what gives it the extra room.
+    // Tools > Stylized Kitchen > Resize House To World Scale applies a change here to a built scene
+    // without rebuilding it.
+    internal const float WorldScale = 45f;
 
     // z runs from -HalfDepth (south) to +HalfDepth (north) in both rooms. The kitchen spans x from
     // KitchenWest to PartitionX, then comes the partition wall, then the living room up to LivingEast.

@@ -3,8 +3,8 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // The old person's slap: Attack whips the right hand across the screen, and as it crosses the middle
-// everything in a small sphere in front of the camera is hit - spit targets rock and flash, other
-// Rigidbodies are knocked away. The camera jolts and a hit briefly freezes the hand (hit-stop).
+// everything in a capsule reaching from his face out to arm's length is hit - spit targets rock and
+// flash, other Rigidbodies are knocked away. The camera jolts and a hit briefly freezes the hand (hit-stop).
 // While OldPersonPickup holds something, Attack throws it instead and no slap starts.
 // Goes on the old_person root next to OldPersonFPSController. The model has no slap animation, so the
 // arm is posed in code over the Idle/Walk clip, along a camera-space path the elbow and shoulder
@@ -34,9 +34,9 @@ public class OldPersonSlap : MonoBehaviour
     [SerializeField] AudioClip slapSound;
     [Tooltip("Optional sound of the hand swinging, played at the start of every slap, hit or miss, on every player's copy.")]
     [SerializeField] AudioClip swingSound;
-    [Tooltip("Distance from the camera to the centre of the hit sphere, in metres at the old person's own size (scales with him).")]
+    [Tooltip("How far in front of the camera the hit reaches, in metres at the old person's own size (scales with him). Everything between his face and this is hit.")]
     [SerializeField] float reach = 0.8f;
-    [Tooltip("Radius of the hit sphere, in metres at the old person's own size (scales with him).")]
+    [Tooltip("Radius of the hit capsule, in metres at the old person's own size (scales with him).")]
     [SerializeField] float hitRadius = 0.35f;
     [Tooltip("Impulse given to what is hit. The default spit hits with about 1.")]
     [SerializeField] float slapForce = 3f;
@@ -234,17 +234,21 @@ public class OldPersonSlap : MonoBehaviour
     void Strike()
     {
         Transform view = viewCamera.transform;
-        // In the camera's own space, like the hand path: the Kitchen scene scales old_person 30x, and a
-        // sphere measured in world units sat inside his head, so the slap hit almost nothing.
+        // In the camera's own space, like the hand path: the Kitchen scene scales old_person up, and a
+        // capsule measured in world units sat inside his head, so the slap hit almost nothing.
+        // It runs from the camera out to the reach point rather than being a ball parked at arm's
+        // length: a fly hovering right in the old man's face fell into the gap between his eyes and
+        // that ball and could not be hit at all, so the closer it came, the safer it was.
+        Vector3 eye = view.position;
         Vector3 center = view.TransformPoint(Vector3.forward * reach);
         float radius = hitRadius * view.lossyScale.x;
         Vector3 direction = (view.forward - view.right * SidewaysPush).normalized;
 
         hitThisSlap.Clear();
-        Collider[] touched = Physics.OverlapSphere(center, radius, hitLayers, QueryTriggerInteraction.Ignore);
+        Collider[] touched = Physics.OverlapCapsule(eye, center, radius, hitLayers, QueryTriggerInteraction.Ignore);
         foreach (Collider touchedCollider in touched)
         {
-            // Skips the old person's own CharacterController, which the sphere overlaps when looking down.
+            // Skips the old person's own CharacterController and his head, which the capsule starts inside.
             if (!touchedCollider.transform.IsChildOf(transform))
                 HitCollider(touchedCollider, center, direction);
         }
@@ -329,7 +333,13 @@ public class OldPersonSlap : MonoBehaviour
         }
         Transform view = viewCamera.transform;
         Gizmos.DrawWireSphere(WristOnPath(0.5f), 0.02f * view.lossyScale.x);
+        // Both ends of the hit capsule and the line between them, so what the slap covers close in is
+        // as visible as what it covers at arm's length.
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(view.TransformPoint(Vector3.forward * reach), hitRadius * view.lossyScale.x);
+        Vector3 reachPoint = view.TransformPoint(Vector3.forward * reach);
+        float hitScale = hitRadius * view.lossyScale.x;
+        Gizmos.DrawWireSphere(view.position, hitScale);
+        Gizmos.DrawWireSphere(reachPoint, hitScale);
+        Gizmos.DrawLine(view.position, reachPoint);
     }
 }
