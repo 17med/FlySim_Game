@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -6,6 +7,8 @@ using UnityEngine.InputSystem;
 // left/right only and stay level; Space takes off and walking off an edge starts a hover.
 // Flight has momentum (linear acceleration, a glide to a stop, a Shift boost); walking has none.
 // The field of view widens with speed, and FlyAiming slows everything while Aim is held.
+// Flying into a surface is a bump: the fly loses the speed it was carrying into it and says so through
+// Bumped, which FlyImpact turns into a thud and a puff of dust.
 // Goes on an empty parent of the fly model, whose own 180° X rotation must not be overwritten.
 [RequireComponent(typeof(CharacterController))]
 public class FlyController : MonoBehaviour
@@ -25,6 +28,11 @@ public class FlyController : MonoBehaviour
     // Floor for the top flight speed (units per second), so a zero speed set in the Inspector never
     // divides by zero.
     const float MinTopSpeed = 0.01f;
+    // No single sweep of the collider moves it further than this share of its own radius. See MoveInSteps.
+    const float MaxSweepShare = 0.5f;
+    // Ceiling on the sweeps one frame may be split into, so a frame hitch or a breakpoint cannot turn
+    // one Move into hundreds of them.
+    const int MaxSweeps = 12;
     // Int parameter on the fly's Animator; values match MovementState.
     // Public so FlyAudio can read it on other players' copies, where this component is off.
     public static readonly int StateAnimParameter = Animator.StringToHash("stateanim");
@@ -32,6 +40,22 @@ public class FlyController : MonoBehaviour
     static readonly int WingSpeedAnimParameter = Animator.StringToHash("flyspeed");
 
     public enum MovementState { Idle = 0, Walking = 1, Flying = 2 }
+
+    // One knock of the fly against a surface, handed to whatever is listening to Bumped. Speed is how
+    // fast the fly was going into the surface, not its total speed: brushing along a wall at full
+    // tilt is not a bump, flying straight into it is.
+    public struct Bump
+    {
+        public Vector3 point;
+        public Vector3 normal;
+        public float speed;
+        public Collider surface;
+    }
+
+    // Raised when the fly flies into something hard enough to be worth hearing, and on every bounce
+    // of a knocked fly. Only on the owner's copy: on another player's this component is off and the
+    // network moves the fly, so that copy's bumps are its owner's, replayed by FlyKnockbackNetwork.
+    public event Action<Bump> Bumped;
 
     // Read by FlyAudio on the owner's copy; also what the Animator's "stateanim" is set to.
     public MovementState State { get; private set; }
@@ -53,6 +77,8 @@ public class FlyController : MonoBehaviour
     [SerializeField] float turnSpeed = 360f;
     [Tooltip("Forward flying speed is multiplied by this while Shift (Sprint) is held.")]
     [SerializeField] float boostMultiplier = 2f;
+    [Tooltip("How much of the boost climbing and diving get too, so Shift speeds up going up as well as going forward. 0 = Shift only boosts the Z/Q/S/D part, 1 = it boosts the lift just as much.")]
+    [SerializeField, Range(0f, 1f)] float boostLiftShare = 1f;
     [Tooltip("Seconds the fly takes to reach Move Speed from rest. Speeding into a boost continues at the same rate. 0 = instant.")]
     [SerializeField, Range(0f, 1f)] float accelerationTime = 0.25f;
     [Tooltip("Seconds the fly takes to stop from Move Speed when released. Longer than acceleration so it glides to a stop.")]
@@ -75,6 +101,18 @@ public class FlyController : MonoBehaviour
     [SerializeField, Range(1f, 179f)] float maxSpeedFov = 75f;
     [Tooltip("Seconds the field of view takes to follow a change in speed. 0 = instant.")]
     [SerializeField, Range(0f, 1f)] float fovChangeTime = 0.2f;
+    [Tooltip("Extra degrees of field of view punched in the instant Shift is pressed, on top of the widening that speed itself brings, so a boost kicks rather than creeping in. It fades over Fov Change Time. 0 turns the kick off.")]
+    [SerializeField, Min(0f)] float boostFovPunch = 10f;
+
+    // Flying into a cupboard. The CharacterController stops the fly on its own, but left to itself it
+    // then slides along the surface at the speed it arrived with, in silence, which reads as skating.
+    [Header("Bumps")]
+    [Tooltip("Slowest the fly can be going into a surface, in units per second, and still bump it. Below this it settles and slides exactly as it always did, so landings and crawling into a wall stay quiet.")]
+    [SerializeField, Min(0f)] float bumpMinSpeed = 8f;
+    [Tooltip("Share of the speed it was carrying into the surface that the fly loses on a bump. 1 = it stops dead against the wall, 0 = it keeps all of it and only the sound plays.")]
+    [SerializeField, Range(0f, 1f)] float bumpAbsorb = 0.75f;
+    [Tooltip("Seconds before another bump is reported. One Move can touch a corner with several colliders, and a knocked fly bounces many times a second; without this the thud would stack into a rattle.")]
+    [SerializeField, Min(0f)] float bumpCooldown = 0.12f;
 
     // Slapped or hit (FlyKnockbackNetwork calls Knock): flung like a loose object, tumbling and
     // bouncing, and unsteerable until the stun wears off.
@@ -101,15 +139,26 @@ public class FlyController : MonoBehaviour
     Vector3 flyVelocity;
     // SmoothDamp's running state for the camera's field of view.
     float fovVelocity;
+    // Degrees of the boost kick still to fade out of the field of view.
+    float fovPunchLeft;
     float steerYaw;
     float steerPitch;
     bool isGrounded;
+    bool isBoosting;
     Vector3 knockVelocity;
     Vector3 tumbleAxis;
     float stunLeft;
+    float bumpReadyTime;
 
     // True while the fly is knocked and cannot be steered. FlySpit reads it so a stunned fly cannot spit.
     public bool IsStunned => stunLeft > 0f;
+
+    // True while Shift is held and the fly is actually flying on it. Read by FlyRush, which turns it
+    // into the wind and the streaks that sell the speed.
+    public bool IsBoosting => isBoosting;
+
+    // 0 while hovering still, 1 at full boost speed. Also read by FlyRush.
+    public float SpeedFraction01 => Mathf.Clamp01(SpeedFraction());
 
     // True while the fly is standing on something. Only meaningful on the owner's copy: on another
     // player's this component is off and never updates it, which is why OldPersonStomp works the fly's
@@ -139,6 +188,8 @@ public class FlyController : MonoBehaviour
         flyVelocity = Vector3.zero;
         knockVelocity = Vector3.zero;
         stunLeft = 0f;
+        isBoosting = false;
+        fovPunchLeft = 0f;
         // Otherwise the first frame back turns the fly straight off the spawn point's heading toward
         // wherever the camera happened to be looking when it died.
         steerYaw = rotation.eulerAngles.y;
@@ -154,7 +205,11 @@ public class FlyController : MonoBehaviour
         flyVelocity = Vector3.zero;
         stunLeft = stunTime;
         isGrounded = false;
-        tumbleAxis = Random.onUnitSphere;
+        isBoosting = false;
+        // Qualified: System is in scope here for Action, and both namespaces have a Random.
+        tumbleAxis = UnityEngine.Random.onUnitSphere;
+        // So the first wall the flung fly meets is heard, however recently it last bumped one.
+        bumpReadyTime = 0f;
     }
 
     void Awake()
@@ -248,11 +303,12 @@ public class FlyController : MonoBehaviour
     void MoveKnocked()
     {
         stunLeft -= Time.deltaTime;
+        isBoosting = false;
         knockVelocity += Vector3.down * (knockGravity * Time.deltaTime);
         knockVelocity *= Mathf.Pow(1f - knockAirDrag, Time.deltaTime);
 
         // Bounces happen inside Move, in OnControllerColliderHit.
-        CollisionFlags contacts = controller.Move(knockVelocity * Time.deltaTime);
+        CollisionFlags contacts = MoveInSteps(knockVelocity * Time.deltaTime);
         isGrounded = (contacts & CollisionFlags.Below) != 0;
         if (!isGrounded)
             transform.Rotate(tumbleAxis, tumbleSpeed * Time.deltaTime, Space.World);
@@ -268,12 +324,39 @@ public class FlyController : MonoBehaviour
 
     // Called by the CharacterController during Move for every surface it touches. While knocked the
     // fly bounces off it, losing speed each time, so it comes to rest instead of skating along the floor.
+    // Flying, it bumps: the speed it was carrying into the surface is absorbed, so hitting a cupboard
+    // stops the fly against it rather than letting it grind along at full tilt.
     void OnControllerColliderHit(ControllerColliderHit hit)
     {
-        // Only surfaces it is moving into: one it is already leaving was bounced off a moment ago.
-        if (!IsStunned || Vector3.Dot(knockVelocity, hit.normal) >= 0f)
+        if (IsStunned)
+        {
+            // Only surfaces it is moving into: one it is already leaving was bounced off a moment ago.
+            float intoSurface = -Vector3.Dot(knockVelocity, hit.normal);
+            if (intoSurface <= 0f)
+                return;
+            ReportBump(hit, intoSurface);
+            knockVelocity = Vector3.Reflect(knockVelocity, hit.normal) * knockBounce;
             return;
-        knockVelocity = Vector3.Reflect(knockVelocity, hit.normal) * knockBounce;
+        }
+
+        // Below the bump speed nothing is touched, so settling onto a surface, walking into a skirting
+        // board and crawling along a wall all behave exactly as they did before bumps existed.
+        float intoWall = -Vector3.Dot(flyVelocity, hit.normal);
+        if (intoWall < bumpMinSpeed)
+            return;
+        ReportBump(hit, intoWall);
+        flyVelocity += hit.normal * (intoWall * bumpAbsorb);
+    }
+
+    // One bump, at most one every Bump Cooldown. The cooldown is the whole reason this is not just an
+    // event invocation: a single Move can report a corner's two colliders, and a knocked fly bounces
+    // several times a second, so the thud would otherwise stack into a rattle.
+    void ReportBump(ControllerColliderHit hit, float speed)
+    {
+        if (speed < bumpMinSpeed || Time.time < bumpReadyTime)
+            return;
+        bumpReadyTime = Time.time + bumpCooldown;
+        Bumped?.Invoke(new Bump { point = hit.point, normal = hit.normal, speed = speed, surface = hit.collider });
     }
 
     // 0 while hovering still, 1 at full boost speed. Used for the wing beat and the field of view.
@@ -290,13 +373,23 @@ public class FlyController : MonoBehaviour
         return Mathf.Lerp(hoverWingSpeed, boostWingSpeed, SpeedFraction());
     }
 
-    // Widens the view as the fly speeds up. Eased, so starting a boost doesn't snap the view.
+    // Widens the view as the fly speeds up. Eased, so starting a boost doesn't snap the view - except
+    // for the kick, which is the one part meant to be felt: pressing Shift adds Boost Fov Punch
+    // degrees at once and they fade back out over Fov Change Time, so the boost reads as a shove
+    // rather than as the view slowly opening while the fly accelerates.
     void UpdateFieldOfView()
     {
         if (flyCamera == null)
             return;
-        float targetFov = Mathf.Lerp(defaultFov, maxSpeedFov, SpeedFraction()) * FovMultiplier;
+        float targetFov = Mathf.Lerp(defaultFov, maxSpeedFov, SpeedFraction()) * FovMultiplier + fovPunchLeft;
+        // Camera.fieldOfView rejects anything outside this, and the punch on top of a high Max Speed
+        // Fov can reach it.
+        targetFov = Mathf.Clamp(targetFov, 1f, 179f);
         flyCamera.fieldOfView = Mathf.SmoothDamp(flyCamera.fieldOfView, targetFov, ref fovVelocity, fovChangeTime);
+        // Gone in Fov Change Time whatever the punch was set to, so the kick and the easing that
+        // follows it are always the same length.
+        float fadeRate = boostFovPunch / Mathf.Max(fovChangeTime, Time.deltaTime);
+        fovPunchLeft = Mathf.MoveTowards(fovPunchLeft, 0f, fadeRate * Time.deltaTime);
     }
 
     // Play mode only. In Free mode the last value is kept, which is what holds the fly's heading.
@@ -317,15 +410,24 @@ public class FlyController : MonoBehaviour
         MoveAndDetectGround(velocity);
         // Landing absorbs all flight momentum, so the next take-off starts from rest.
         flyVelocity = Vector3.zero;
+        isBoosting = false;
     }
 
     // Z/S fly along the full steering direction (including up/down); Space/Ctrl are straight up/down.
-    // Shift boosts only the Z/Q/S/D part; climbing and diving keep their speed.
+    // Shift boosts the Z/Q/S/D part, and as much of the climb and the dive as Boost Lift Share asks for.
     void Fly(Vector2 move, float lift)
     {
-        float speed = boostAction.IsPressed() ? moveSpeed * boostMultiplier : moveSpeed;
+        bool wantsBoost = boostAction.IsPressed();
+        float speed = wantsBoost ? moveSpeed * boostMultiplier : moveSpeed;
+        // Lerped rather than multiplied by the share, so share 0 leaves the lift at its own speed
+        // (how Shift used to work) and share 1 boosts it by the full multiplier.
+        float lifted = verticalSpeed * (wantsBoost ? Mathf.Lerp(1f, boostMultiplier, boostLiftShare) : 1f);
         Vector3 targetVelocity = (Quaternion.Euler(steerPitch, steerYaw, 0f) * new Vector3(move.x, 0f, move.y) * speed
-                               + Vector3.up * (lift * verticalSpeed)) * SpeedMultiplier;
+                               + Vector3.up * (lift * lifted)) * SpeedMultiplier;
+        // On the press, not for as long as Shift is down: the kick belongs to starting the boost.
+        if (wantsBoost && !isBoosting)
+            fovPunchLeft = boostFovPunch;
+        isBoosting = wantsBoost;
         flyVelocity = Accelerate(targetVelocity);
         // Hovering makes no move at all: there is no gravity, and a zero-length move reports no contact.
         if (flyVelocity == Vector3.zero)
@@ -342,14 +444,43 @@ public class FlyController : MonoBehaviour
         // 0 means instant, as the Inspector tooltips say; it would also divide by zero below.
         if (rampTime <= 0f)
             return targetVelocity;
-        float maxSpeedChange = moveSpeed / rampTime * Time.deltaTime;
+        // Against the speed actually being asked for, not against Move Speed: dividing the cruising
+        // speed by the ramp time meant a boost, which is twice as fast, took twice as long to come up
+        // to, so the one move that should feel like a kick was the softest one the fly had.
+        float rampSpeed = Mathf.Max(moveSpeed, targetVelocity.magnitude);
+        float maxSpeedChange = rampSpeed / rampTime * Time.deltaTime;
         return Vector3.MoveTowards(flyVelocity, targetVelocity, maxSpeedChange);
     }
 
     void MoveAndDetectGround(Vector3 velocity)
     {
-        controller.Move(velocity * Time.deltaTime);
-        isGrounded = (controller.collisionFlags & CollisionFlags.Below) != 0;
+        CollisionFlags contacts = MoveInSteps(velocity * Time.deltaTime);
+        isGrounded = (contacts & CollisionFlags.Below) != 0;
+    }
+
+    // One Move, split so no single sweep is longer than half the collider's own radius.
+    // A CharacterController sweeps its capsule along the whole delta at once, and a delta longer than
+    // the thing in its way can finish on the far side of it: the fly's collider is half a unit across
+    // and a boost carries it sixty units a second, so a single dropped frame is a hand's width of
+    // kitchen covered in one sweep - which is how a fast fly left the house through a cupboard door or
+    // a wall. Splitting it also keeps the knocked fly's bounces honest, because each sweep gets its
+    // own OnControllerColliderHit instead of one call for the whole flight.
+    // Normal flight is one sweep, so this costs nothing until the fly is actually moving that fast.
+    CollisionFlags MoveInSteps(Vector3 delta)
+    {
+        float radius = Mathf.Abs(controller.radius * transform.lossyScale.x);
+        float maxSweep = Mathf.Max(radius, MinTopSpeed) * MaxSweepShare;
+        int sweeps = Mathf.Clamp(Mathf.CeilToInt(delta.magnitude / maxSweep), 1, MaxSweeps);
+        Vector3 step = delta / sweeps;
+        CollisionFlags contacts = CollisionFlags.None;
+        for (int i = 0; i < sweeps; i++)
+        {
+            // The last sweep's flags, not every sweep's or-ed together: this has to mean the same
+            // thing as one big Move's, which is what the fly is touching once it has got there.
+            // Or-ing them would leave a fly that clipped the floor on the way up reading as grounded.
+            contacts = controller.Move(step);
+        }
+        return contacts;
     }
 
     // Uses ground contact after this frame's move, so taking off or walking off an edge switches to

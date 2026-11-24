@@ -59,8 +59,10 @@ public class PlayerNameTag : NetworkBehaviour
     // body's collider: the fly and the old man are wildly different sizes.
     float labelHeight;
     // How tall one line of the label is at scale 1, measured from the font rather than assumed, so
-    // the label keeps its share of the screen whatever font the project ends up with.
-    float labelUnitHeight = 1f;
+    // the label keeps its share of the screen whatever font the project ends up with. 0 means the
+    // measurement has not come back yet, which is not the same as the label being one unit tall: see
+    // TryMeasureUnitHeight.
+    float labelUnitHeight;
     Camera viewCamera;
 
     public override void OnNetworkSpawn()
@@ -86,7 +88,15 @@ public class PlayerNameTag : NetworkBehaviour
 
     // Leaving the scene destroys the body without despawning it first, and the label is not a child
     // of the body, so it would be left floating in the next scene.
-    void OnDestroy() => DestroyLabel();
+    // Overriding rather than hiding, with base called: NetworkBehaviour has an OnDestroy of its own
+    // that releases this component's NetworkVariable and takes it off its NetworkObject, and a plain
+    // `void OnDestroy()` here shadowed it - Unity then called this one and Netcode's never ran, so
+    // every body that left the kitchen leaked the variable the name travels in.
+    public override void OnDestroy()
+    {
+        DestroyLabel();
+        base.OnDestroy();
+    }
 
     void DestroyLabel()
     {
@@ -119,7 +129,7 @@ public class PlayerNameTag : NetworkBehaviour
         {
             return;
         }
-        if (!TryGetViewCamera(out Camera view))
+        if (!TryGetViewCamera(out Camera view) || !TryMeasureUnitHeight())
         {
             labelTransform.gameObject.SetActive(false);
             return;
@@ -142,6 +152,35 @@ public class PlayerNameTag : NetworkBehaviour
         // the screen turns towards the player instead of staying edge-on.
         labelTransform.rotation = Quaternion.LookRotation(-toCamera / distance, view.transform.up);
         labelTransform.localScale = Vector3.one * (WorldHeightAt(view, distance) / labelUnitHeight);
+    }
+
+    // How tall one line of this label is at scale 1. False while the answer is not available yet,
+    // which is the whole point of it being a separate step: TextMeshPro reports no height at all
+    // until its font atlas has been built, and a height of nothing divided into the size the label
+    // wants to be hands back a scale of tens of thousands. The label then either swallows the screen
+    // or is culled for being larger than the world, which is a name tag that reads as broken rather
+    // than as one frame late. So it is asked for every frame until it answers, and the label is not
+    // drawn until it does.
+    bool TryMeasureUnitHeight()
+    {
+        if (labelUnitHeight > 0f)
+        {
+            return true;
+        }
+        // The reference line rather than the name: the height has to be the font's full line, with an
+        // ascender and a descender, and not whatever this particular name happens to reach.
+        string shown = label.text;
+        label.text = HeightReferenceText;
+        label.ForceMeshUpdate();
+        float measured = label.preferredHeight;
+        label.text = shown;
+        if (measured <= 0f)
+        {
+            return false;
+        }
+        labelUnitHeight = measured;
+        label.ForceMeshUpdate();
+        return true;
     }
 
     // The world height the label needs to fill Screen Share of the view from this far away. Read from
@@ -226,12 +265,17 @@ public class PlayerNameTag : NetworkBehaviour
         {
             body = GetComponentInChildren<Collider>();
         }
+        float fallback = Mathf.Abs(transform.lossyScale.y) * (1f + heightAboveBody);
         if (body == null)
         {
-            return Mathf.Abs(transform.lossyScale.y) * (1f + heightAboveBody);
+            return fallback;
         }
         float top = body.bounds.max.y - transform.position.y;
-        return top + body.bounds.size.y * heightAboveBody;
+        float height = top + body.bounds.size.y * heightAboveBody;
+        // A collider that has not been placed yet reports empty bounds at the origin, which puts the
+        // label underneath a body standing anywhere above y = 0 - and the fly's spawn points are all
+        // in the air. Better the body's own size than a label at its feet or below the floor.
+        return height > 0f ? height : fallback;
     }
 
     void BuildLabel()
@@ -246,13 +290,11 @@ public class PlayerNameTag : NetworkBehaviour
         label.textWrappingMode = TextWrappingModes.NoWrap;
         // Without it a long name is clipped to the default text rect instead of simply being wider.
         label.overflowMode = TextOverflowModes.Overflow;
-        // Measured here, before the name arrives, because it is a property of the font and the size
-        // above and never changes afterwards. Guarded against zero: the first frame can report
-        // nothing if the font atlas is still loading, and dividing the scale by it would make the
-        // label either vanish or swallow the screen.
-        label.text = HeightReferenceText;
-        label.ForceMeshUpdate();
-        labelUnitHeight = Mathf.Max(label.preferredHeight, 0.0001f);
+        // The height is not measured here. It is a property of the font and the size above and never
+        // changes once it is known, but on the frame the label is built TextMeshPro has not
+        // necessarily built its font atlas yet and reports nothing - so LateUpdate asks for it until
+        // it has one, and leaves the label undrawn until then.
+        label.text = PendingName;
         if (outlineWidth > 0f)
         {
             // outlineColor and outlineWidth write to fontMaterial, this label's own copy of the

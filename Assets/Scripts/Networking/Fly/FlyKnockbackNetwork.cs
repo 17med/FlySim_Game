@@ -1,3 +1,4 @@
+using System;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -31,6 +32,13 @@ public class FlyKnockbackNetwork : NetworkBehaviour
     [Tooltip("Seconds after a hit during which objects cannot knock the fly again, so one object is not counted twice.")]
     [SerializeField, Min(0f)] float objectHitCooldown = 0.5f;
 
+    // Raised on every machine the moment this fly is hit, with the velocity it is flung at, next to
+    // the hit sound and down both of the paths that play it. FlyImpact hangs the blood off it.
+    // Deliberately not FlyController.Bumped: this is the fly being struck, which happens on the
+    // hitter's machine and is told to the others, while a bump is the fly running into the kitchen
+    // and is known only where the fly actually moves.
+    public event Action<Vector3> Knocked;
+
     readonly Collider[] nearby = new Collider[OverlapBufferSize];
     FlyController fly;
     CharacterController flyBody;
@@ -53,7 +61,7 @@ public class FlyKnockbackNetwork : NetworkBehaviour
         if (fly == null)
             return;
         objectHitReadyTime = Time.time + objectHitCooldown;
-        PlayHitSound(true);
+        ShowHit(velocity, isFlat: true);
         if (!IsSpawned || IsOwner)
             fly.Knock(velocity);
         if (IsSpawned)
@@ -67,17 +75,22 @@ public class FlyKnockbackNetwork : NetworkBehaviour
         if (fly == null)
             return;
         objectHitReadyTime = Time.time + objectHitCooldown;
-        PlayHitSound(IsOwner);
+        ShowHit(velocity, isFlat: IsOwner);
         if (IsOwner)
             fly.Knock(velocity);
     }
 
-    void PlayHitSound(bool isFlat)
+    // What a hit looks and sounds like, on whichever machine it reaches. Flat for the fly's own player
+    // and for the one who hit it, positional for everyone else, so a slap across the kitchen is heard
+    // from over there.
+    void ShowHit(Vector3 velocity, bool isFlat)
     {
-        if (hitSound == null)
-            return;
-        hitSound.spatialBlend = isFlat ? 0f : 1f;
-        GameAudio.PlaySfx(hitSound);
+        if (hitSound != null)
+        {
+            hitSound.spatialBlend = isFlat ? 0f : 1f;
+            GameAudio.PlaySfx(hitSound);
+        }
+        Knocked?.Invoke(velocity);
     }
 
     void FixedUpdate()

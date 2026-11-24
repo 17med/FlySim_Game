@@ -34,8 +34,20 @@ public class OldPersonSlap : MonoBehaviour
     [SerializeField] OldPersonPickup pickup;
     [Tooltip("Optional sound played where the slap lands. Leave empty for a silent slap.")]
     [SerializeField] AudioClip slapSound;
+    [Tooltip("Pitch the landing is played at. Below 1 on purpose: what makes a slap sound like it connected is weight, and dropping a light clip most of an octave is weight. 1 plays it as recorded.")]
+    [SerializeField, Range(0.1f, 2f)] float slapPitch = 0.6f;
+    [Tooltip("How loud the landing is, as a share of the sound effects level in the settings. Kept at 1 and the swing turned down instead, because an AudioSource cannot go above 1: the blow is meant to be the loudest part of a slap, and the only way up is everything else down.")]
+    [SerializeField, Range(0f, 1f)] float slapVolume = 1f;
     [Tooltip("Optional sound of the hand swinging, played at the start of every slap, hit or miss, on every player's copy.")]
     [SerializeField] AudioClip swingSound;
+    [Tooltip("How loud the swing is. Under the landing's volume on purpose - the air moving should not be as loud as the hand arriving.")]
+    [SerializeField, Range(0f, 1f)] float swingVolume = 0.65f;
+    [Tooltip("Optional grunt of effort, played on some slaps on top of the swing. Leave empty for a silent old man.")]
+    [SerializeField] AudioClip effortSound;
+    [Tooltip("Share of slaps the grunt is played on. Well under 1: an old man who grunts every single swing stops being characterful by the third one.")]
+    [SerializeField, Range(0f, 1f)] float effortChance = 0.25f;
+    [Tooltip("Pitch range the grunt is played at, so repeats are not identical.")]
+    [SerializeField] Vector2 effortPitchRange = new Vector2(0.9f, 1.1f);
     [Tooltip("How far in front of the camera the hit reaches, in metres at the old person's own size (scales with him). Everything between his face and this is hit.")]
     [SerializeField] float reach = 0.8f;
     [Tooltip("Radius of the hit capsule, in metres at the old person's own size (scales with him).")]
@@ -228,8 +240,15 @@ public class OldPersonSlap : MonoBehaviour
         hasStruck = false;
         // At the camera, so the slapper hears it at full volume and the others hear it from his head.
         // viewCamera is null only when Awake disabled this component; a remote slap can still arrive.
-        if (swingSound != null && viewCamera != null)
-            GameAudio.PlaySfxAt(swingSound, viewCamera.transform.position);
+        if (viewCamera != null)
+        {
+            Vector3 mouth = viewCamera.transform.position;
+            if (swingSound != null)
+                GameAudio.PlaySfxAt(swingSound, mouth, swingVolume, 1f);
+            // Rolled per slap rather than cycled, so the grunts do not fall into a pattern.
+            if (effortSound != null && Random.value < effortChance)
+                GameAudio.PlaySfxAt(effortSound, mouth, 1f, Random.Range(effortPitchRange.x, effortPitchRange.y));
+        }
         Slapped?.Invoke();
     }
 
@@ -262,7 +281,7 @@ public class OldPersonSlap : MonoBehaviour
         if (cameraShake != null)
             cameraShake.Shake(hasHit ? hitShake : missShake);
         if (hasHit && slapSound != null)
-            GameAudio.PlaySfxAt(slapSound, center);
+            GameAudio.PlaySfxAt(slapSound, center, slapVolume, slapPitch);
     }
 
     void HitCollider(Collider touchedCollider, Vector3 center, Vector3 direction)

@@ -2217,26 +2217,32 @@ MonoBehaviour:
   animator: {fileID: 1847940693147353895}
   cameraShake: {fileID: 3494775580354827563}
   pickup: {fileID: 3062753984204743040}
-  slapSound: {fileID: 8300000, guid: d3a0340dce9f44782a48096ae0124f4a, type: 3}
+  slapSound: {fileID: 8300000, guid: b16f571f8aa174313a03cba62c0b2fbd, type: 3}
+  slapPitch: 0.6
+  slapVolume: 1
   swingSound: {fileID: 8300000, guid: d3a0340dce9f44782a48096ae0124f4a, type: 3}
+  swingVolume: 0.65
+  effortSound: {fileID: 8300000, guid: ab29cc56cc586c0fd8cba5faeac20814, type: 3}
+  effortChance: 0.25
+  effortPitchRange: {x: 0.9, y: 1.1}
   reach: 0.8
   hitRadius: 0.35
   slapForce: 3
-  flyKnockSpeed: 50
-  flyKnockLift: 20
+  flyKnockSpeed: 65
+  flyKnockLift: 28
   hitLayers:
     serializedVersion: 2
     m_Bits: 4294967295
   windUpTime: 0.12
   strikeTime: 0.08
   recoverTime: 0.3
-  hitStopTime: 0.06
+  hitStopTime: 0.09
   cockedWrist: {x: 0.2, y: -0.02, z: 0.22}
   contactWrist: {x: 0.03, y: -0.08, z: 0.26}
   followThroughWrist: {x: -0.15, y: -0.2, z: 0.18}
   wristSnap: 30
   followThroughOvershoot: 0.5
-  hitShake: 0.5
+  hitShake: 0.8
   missShake: 0.1
 --- !u!114 &2110537223331959689
 MonoBehaviour:

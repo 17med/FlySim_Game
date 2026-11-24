@@ -12,6 +12,8 @@ public class FlyAudio : MonoBehaviour
     [SerializeField, Range(0f, 1f)] float walkVolume = 1f;
     [SerializeField] AudioClip[] flySounds = new AudioClip[0];
     [SerializeField, Range(0f, 1f)] float flyVolume = 1f;
+    [Tooltip("Pitch of the buzz at full boost speed; hovering stays at 1 and cruising falls in between, so the fly is heard speeding up as well as seen. 1 turns the ramp off.")]
+    [SerializeField, Range(0.5f, 2f)] float boostPitch = 1.25f;
 
     static readonly AudioClip[] Silence = new AudioClip[0];
 
@@ -43,7 +45,19 @@ public class FlyAudio : MonoBehaviour
         // Flat on the owner's copy: the orbit camera sits several units back, where a positional
         // sound would be faint. Other players hear the fly from where it is.
         source.spatialBlend = fly.enabled ? 0f : 1f;
+        source.pitch = BuzzPitch();
         Play(sounds);
+    }
+
+    // Faster flight buzzes higher, the same way FlyController beats the wings faster. Only on the
+    // owner's copy: the fly's speed is not sent over the network, so on another player's it would be
+    // whatever it was at the moment that copy's FlyController was switched off - a frozen number that
+    // would hold their fly at one wrong pitch for the whole match.
+    float BuzzPitch()
+    {
+        if (!fly.enabled)
+            return 1f;
+        return Mathf.Lerp(1f, boostPitch, fly.SpeedFraction01);
     }
 
     FlyController.MovementState CurrentState()
