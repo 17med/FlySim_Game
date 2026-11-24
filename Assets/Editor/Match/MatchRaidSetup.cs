@@ -4,7 +4,8 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 
 // One command that puts the raid in place everywhere it belongs (Tools > Match > Set Up The Raid):
-// the match length row in the main menu's settings panel, and both kitchens wired for eating.
+// the match length row in the main menu's settings panel, and both kitchens wired for eating, with
+// the coffee on the living room table, the fly's two lives and the old man's boot.
 // The pieces each have their own menu item and want a particular scene open; this opens and saves
 // each one in turn so none of that has to be done by hand, and so the same work can be done from a
 // command line with -executeMethod MatchRaidSetup.SetUpEverything.
@@ -29,7 +30,8 @@ public static class MatchRaidSetup
         {
             return;
         }
-        Debug.Log("Set Up The Raid: done. The settings panel has its MATCH LENGTH row, and both kitchens have food that can be eaten and a clock to beat.");
+        Debug.Log("Set Up The Raid: done. The settings panel has its MATCH LENGTH row, and both kitchens have two dishes that can be eaten, " +
+                  "a clock to beat, a fly with two lives and an old man who can stand on it.");
     }
 
     // The settings panel, which is where the match length is set.
@@ -44,6 +46,9 @@ public static class MatchRaidSetup
         return Save(scene);
     }
 
+    // The order matters: the coffee has to be standing in the living room before Wire Match looks for
+    // the food, because that is how the mug gets its FoodDish and, in a room, its FoodDishNetwork.
+    // The fly's lives go in between because they tag the spawn points in this same scene.
     static bool SetUpKitchen(string sceneName)
     {
         Scene scene = Open(sceneName);
@@ -51,7 +56,7 @@ public static class MatchRaidSetup
         {
             return false;
         }
-        return MatchWiring.WireScene(scene) && Save(scene);
+        return CoffeeCupSetup.PlaceCoffeeInOpenScene() && FlyLifeWiring.WireFlyLives() && MatchWiring.WireScene(scene) && Save(scene);
     }
 
     static Scene Open(string sceneName)

@@ -2129,6 +2129,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 4398247409588550342, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1226455546149983331}
+    - targetCorrespondingSourceObject: {fileID: 4398247409588550342, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6627759590495191885}
     - targetCorrespondingSourceObject: {fileID: 3653998066442634814, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       insertIndex: -1
       addedObject: {fileID: 5331846117834799652}
@@ -2595,6 +2598,33 @@ MonoBehaviour:
     m_Bits: 4294967295
   textColor: {r: 1, g: 0.95, b: 0.75, a: 1}
   outlineWidth: 0.2
+--- !u!114 &6627759590495191885
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4904077209020662759}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 192d048bd1cd583398c5964f62b0b43d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::OldPersonStomp
+  body: {fileID: 0}
+  controls: {fileID: 0}
+  cameraShake: {fileID: 0}
+  squishSound: {fileID: 0}
+  footRadius: 0.25
+  footLift: 0.08
+  flyGroundClearance: 0.03
+  sameFlyCooldown: 12
+  stompLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  flyGroundLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  stompShake: 0.35
 --- !u!1 &5454674350454980383 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3653998066442634814, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}

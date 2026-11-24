@@ -3,8 +3,10 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // The old person's slap: Attack whips the right hand across the screen, and as it crosses the middle
-// everything in a capsule reaching from his face out to arm's length is hit - spit targets rock and
-// flash, other Rigidbodies are knocked away. The camera jolts and a hit briefly freezes the hand (hit-stop).
+// everything in a capsule reaching from his face out to arm's length is hit - a fly is flung and loses
+// one of its two lives, so two slaps kill it (OldPersonStomp is the quicker way: one step on a fly that
+// is on the ground), spit targets rock and flash, other Rigidbodies are knocked away.
+// The camera jolts and a hit briefly freezes the hand (hit-stop).
 // While OldPersonPickup holds something, Attack throws it instead and no slap starts.
 // Goes on the old_person root next to OldPersonFPSController. The model has no slap animation, so the
 // arm is posed in code over the Idle/Walk clip, along a camera-space path the elbow and shoulder
@@ -270,8 +272,13 @@ public class OldPersonSlap : MonoBehaviour
         FlyKnockbackNetwork fly = touchedCollider.GetComponentInParent<FlyKnockbackNetwork>();
         if (fly != null)
         {
+            // Inside the same de-duplication as the knockback, so a fly caught by two of its colliders
+            // in one swing is flung once and counted as one of its two lives, not both.
             if (hitThisSlap.Add(fly))
+            {
                 fly.Knock(direction * flyKnockSpeed + Vector3.up * flyKnockLift);
+                ReportFlyHit(touchedCollider);
+            }
             return;
         }
 
@@ -296,6 +303,24 @@ public class OldPersonSlap : MonoBehaviour
         if (body == null || body.isKinematic || !hitThisSlap.Add(body))
             return;
         body.AddForceAtPosition(direction * slapForce, ContactPoint(touchedCollider, center), ForceMode.Impulse);
+    }
+
+    // One slap off the fly's two lives. The slap is found on the old man's machine while the fly's
+    // health is counted on the server, so online the hit travels through FlyHealthNetwork, which also
+    // does the right thing offline; FlyHealth on its own is the fallback for a fly prefab with no
+    // network component at all. Nothing is said when neither is there: a fly without health can still
+    // be knocked about, exactly as the game played before it had lives.
+    static void ReportFlyHit(Collider touchedCollider)
+    {
+        FlyHealthNetwork health = touchedCollider.GetComponentInParent<FlyHealthNetwork>();
+        if (health != null)
+        {
+            health.ReportHit();
+            return;
+        }
+        FlyHealth localHealth = touchedCollider.GetComponentInParent<FlyHealth>();
+        if (localHealth != null)
+            localHealth.TakeHit();
     }
 
     // ClosestPoint only works on primitive and convex mesh colliders; the kitchen's non-convex meshes

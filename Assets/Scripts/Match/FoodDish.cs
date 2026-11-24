@@ -2,16 +2,20 @@ using System;
 using UnityEngine;
 
 // The food the flies are after and the old man is defending: one dish that empties as it is eaten.
-// Goes on the couscous, next to CouscousDishController, which it drives. The controller already owns
-// what a half eaten dish looks like - which garnishes are gone, how flat the semolina sits - and
-// smooths every change, so a bite here reads as the dish sinking rather than as a number changing.
+// Goes on anything with an IDishFill next to it - the couscous with its CouscousDishController, the
+// living room's coffee mug with its CoffeeCup - and drives it. This component owns the rules of
+// eating (who is close enough, who is in the way, how fast it goes down) and knows nothing about
+// what the food is; the IDishFill owns what a half eaten dish looks like - which garnishes are gone,
+// how flat the semolina sits, how low the coffee is - and smooths every change, so a bite here reads
+// as the dish sinking rather than as a number changing. That is why there is a second dish in the
+// kitchen and not a second copy of this file.
 // A plain MonoBehaviour: FoodDishNetwork puts the server in charge of it in a room, and the single
 // player Kitchen keeps working with no network at all.
-[RequireComponent(typeof(CouscousDishController))]
 public class FoodDish : MonoBehaviour
 {
     // Below this the dish counts as cleared. CouscousDishController hides the last of the semolina at
-    // half a percent, so anything under it is an empty plate on screen already.
+    // half a percent and CoffeeCup hides the last of the coffee at the same point, so anything under
+    // it is an empty plate on screen already.
     public const float EmptyPercent = 0.5f;
     // The old man walks around and is spawned after the dish in a room, so he is looked for again this
     // often rather than once at the start.
@@ -40,7 +44,9 @@ public class FoodDish : MonoBehaviour
     // Raised once, the moment the last of the food goes.
     public event Action Emptied;
 
-    CouscousDishController controller;
+    // What is actually holding the food. Found in Awake rather than required by the type, so a mug
+    // and a plate can both be a dish.
+    IDishFill fill;
     Transform guard;
     float guardSearchAt;
     // Bounds radius of the dish in world units, worked out once from its renderers.
@@ -51,12 +57,15 @@ public class FoodDish : MonoBehaviour
     float nibblePhase;
     Quaternion restRotation;
 
-    public float Percent => controller != null ? controller.dishPercentage : 0f;
+    public float Percent => fill != null ? fill.FillPercent : 0f;
 
     // 0 to 1, which is what a bar wants.
     public float Fill => Mathf.Clamp01(Percent / 100f);
 
-    public bool IsEmpty => Percent <= EmptyPercent;
+    // The fill being missing is checked as well as the amount: a dish that cannot be drained is not a
+    // dish that has been cleared. Without that test a mis-wired dish would read as an empty plate on
+    // its first frame and hand the flies the match before anybody had eaten anything.
+    public bool IsEmpty => fill != null && Percent <= EmptyPercent;
 
     public float BiteRate => biteRate;
 
@@ -85,7 +94,18 @@ public class FoodDish : MonoBehaviour
 
     void Awake()
     {
-        controller = GetComponent<CouscousDishController>();
+        fill = GetComponent<IDishFill>();
+        if (fill == null)
+        {
+            // Fails closed: with nothing to drain this is not food, so it switches itself off rather
+            // than sitting in the kitchen as a plate the flies can hover over and never empty. The
+            // error names the interface because the fix is to add whichever component implements it -
+            // CouscousDishController on a dish, CoffeeCup on a mug.
+            Debug.LogError($"{nameof(FoodDish)}: {name} has no {nameof(IDishFill)} next to it, so there is nothing for the flies to eat. " +
+                           $"Add the component that holds the food ({nameof(CouscousDishController)} on a couscous, {nameof(CoffeeCup)} on a coffee mug), then run Tools > Match > Wire Match.", this);
+            enabled = false;
+            return;
+        }
         restRotation = transform.localRotation;
         MeasureDish();
     }
@@ -112,11 +132,11 @@ public class FoodDish : MonoBehaviour
     // mouthful and nothing at all once the plate is clear.
     public float Bite(float percent)
     {
-        if (controller == null || percent <= 0f)
+        if (fill == null || percent <= 0f)
         {
             return 0f;
         }
-        float before = controller.dishPercentage;
+        float before = fill.FillPercent;
         float after = Mathf.Max(0f, before - percent);
         if (Mathf.Approximately(before, after))
         {
@@ -131,11 +151,11 @@ public class FoodDish : MonoBehaviour
     // nothing is eaten locally.
     public void SetPercent(float percent)
     {
-        if (controller == null)
+        if (fill == null)
         {
             return;
         }
-        bool wasBitten = percent < controller.dishPercentage;
+        bool wasBitten = percent < fill.FillPercent;
         Apply(Mathf.Clamp(percent, 0f, 100f));
         if (wasBitten)
         {
@@ -145,7 +165,7 @@ public class FoodDish : MonoBehaviour
 
     public void Refill()
     {
-        if (controller != null)
+        if (fill != null)
         {
             Apply(100f);
         }
@@ -160,7 +180,7 @@ public class FoodDish : MonoBehaviour
     void Apply(float percent)
     {
         bool wasEmpty = IsEmpty;
-        controller.dishPercentage = percent;
+        fill.FillPercent = percent;
         Changed?.Invoke(percent);
         if (!wasEmpty && IsEmpty)
         {
@@ -169,7 +189,8 @@ public class FoodDish : MonoBehaviour
     }
 
     // The dish's own size in world units, so the bite and guard ranges mean the same thing whatever
-    // scale it was placed at (the kitchen is built at 30 units to the metre).
+    // scale it was placed at (the kitchen is built at 45 units to the metre, and the coffee mug is a
+    // great deal smaller than the couscous).
     void MeasureDish()
     {
         Renderer[] renderers = GetComponentsInChildren<Renderer>(true);

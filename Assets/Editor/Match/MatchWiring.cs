@@ -6,10 +6,11 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-// Puts the raid into the kitchen (Tools > Match > Wire Match): the fly gets its eating, the couscous
-// becomes food that can be eaten and run out, and the online kitchen gets the Match object that keeps
-// one clock and one verdict for the whole room. Both kitchens get the HUD (timer, couscous bar,
-// result screen) as scene UI if they have none yet; Tools > Match > Add HUD To Open Scene does only that.
+// Puts the raid into the kitchen (Tools > Match > Wire Match): the fly gets its eating, every vessel
+// holding food becomes food that can be eaten and run out, and the online kitchen gets the Match
+// object that keeps one clock and one verdict for the whole room. Both kitchens get the HUD (timer,
+// food bar, result screen) as scene UI if they have none yet; Tools > Match > Add HUD To Open Scene
+// does only that.
 // A menu step rather than hand-edited scene files because of that last part: Netcode works out a
 // NetworkObject's scene id when the component is added through the Editor, so a Match object written
 // into the YAML by hand would never spawn.
@@ -59,7 +60,9 @@ public static class MatchWiring
         int dishes = WireDishes(scene, isOnline);
         if (dishes == 0)
         {
-            Debug.LogError($"Wire Match: no {nameof(CouscousDishController)} in {scene.name}, so there is no food to raid. The couscous needs to be in the scene with its controller on it.");
+            Debug.LogError($"Wire Match: nothing in {scene.name} implements {nameof(IDishFill)}, so there is no food to raid. " +
+                           $"The couscous needs to be in the scene with its {nameof(CouscousDishController)} on it, and the coffee mug with its {nameof(CoffeeCup)} " +
+                           "(Tools > Match > Place Coffee In Living Room puts one in the living room).");
             return false;
         }
         if (isOnline && !WireMatchObject(scene))
@@ -144,16 +147,27 @@ public static class MatchWiring
 
     // ---- the food ------------------------------------------------------------------------------
 
-    // Every couscous in the scene becomes a FoodDish. In the online kitchen it also gets the
-    // NetworkObject and FoodDishNetwork that make the server's plate the one everybody sees.
+    // Everything in the scene that holds food becomes a FoodDish: the couscous through its
+    // CouscousDishController, the living room's mug through its CoffeeCup, and anything else somebody
+    // writes an IDishFill for. Looked up by the interface rather than by either component, so a new
+    // kind of food is wired by this step without it being edited. In the online kitchen each one also
+    // gets the NetworkObject and FoodDishNetwork that make the server's plate the one everybody sees.
     static int WireDishes(Scene scene, bool isOnline)
     {
         int count = 0;
         foreach (GameObject root in scene.GetRootGameObjects())
         {
-            foreach (CouscousDishController controller in root.GetComponentsInChildren<CouscousDishController>(true))
+            // GetComponentsInChildren takes an interface, which is the whole reason FoodDish holds one.
+            foreach (IDishFill food in root.GetComponentsInChildren<IDishFill>(true))
             {
-                GameObject dish = controller.gameObject;
+                // The scene was asked for an interface, so the cast back is made honestly: an
+                // IDishFill that is not a Component has no GameObject to put a FoodDish on.
+                Component holder = food as Component;
+                if (holder == null)
+                {
+                    continue;
+                }
+                GameObject dish = holder.gameObject;
                 EnsureComponentWithUndo<FoodDish>(dish);
                 if (isOnline)
                 {
@@ -193,7 +207,7 @@ public static class MatchWiring
 
     // ---- the HUD -------------------------------------------------------------------------------
 
-    // Puts the timer, couscous bar and result screen into the open kitchen as ordinary scene UI, laid
+    // Puts the timer, food bar and result screen into the open kitchen as ordinary scene UI, laid
     // out the way the old code-built HUD was. Made once: after that the layout is the scene's, moved
     // and resized by hand, and this never touches a HUD that is already there.
     [MenuItem("Tools/Match/Add HUD To Open Scene")]
@@ -248,14 +262,14 @@ public static class MatchWiring
         TopCentre(clock.rectTransform, 0f, 150f, 74f);
         SetReference(fields, "clockText", clock);
 
-        Image track = NewImage("Couscous_Bar", root, new Color(0f, 0f, 0f, 0.45f));
+        Image track = NewImage("Food_Bar", root, new Color(0f, 0f, 0f, 0.45f));
         TopCentre(track.rectTransform, -92f, 420f, 18f);
-        Image fill = NewImage("Couscous_Bar_Fill", track.transform, new Color(0.98f, 0.76f, 0.3f, 1f));
+        Image fill = NewImage("Food_Bar_Fill", track.transform, new Color(0.98f, 0.76f, 0.3f, 1f));
         Stretch(fill.rectTransform);
         SetReference(fields, "foodFill", fill);
 
         Color dim = new Color(0.72f, 0.72f, 0.78f, 0.9f);
-        TMP_Text foodLabel = NewLabel("Couscous_Label", root, "COUSCOUS  100%", 24f, dim);
+        TMP_Text foodLabel = NewLabel("Food_Label", root, "FOOD  100%", 24f, dim);
         TopCentre(foodLabel.rectTransform, -118f, 420f, 30f);
         SetReference(fields, "foodText", foodLabel);
 
@@ -263,7 +277,7 @@ public static class MatchWiring
         TopCentre(state.rectTransform, -158f, 620f, 36f);
         SetReference(fields, "stateText", state);
 
-        TMP_Text hint = NewLabel("Hint", root, "LAND ON THE COUSCOUS AND HOLD  E  TO EAT IT", 26f, dim);
+        TMP_Text hint = NewLabel("Hint", root, "LAND ON THE FOOD AND HOLD  E  TO EAT IT", 26f, dim);
         RectTransform hintRect = hint.rectTransform;
         hintRect.anchorMin = hintRect.anchorMax = new Vector2(0.5f, 0f);
         hintRect.pivot = new Vector2(0.5f, 0f);
@@ -280,7 +294,7 @@ public static class MatchWiring
         Stretch((RectTransform)resultRoot.transform);
         Stretch(NewImage("Scrim", resultRoot.transform, new Color(0f, 0f, 0f, 0.55f)).rectTransform);
 
-        TMP_Text headline = NewLabel("Headline", resultRoot.transform, "THE COUSCOUS SURVIVED", 78f, new Color(0.95f, 0.95f, 0.97f, 1f));
+        TMP_Text headline = NewLabel("Headline", resultRoot.transform, "THE FOOD SURVIVED", 78f, new Color(0.95f, 0.95f, 0.97f, 1f));
         Centre(headline.rectTransform, 40f, 1400f, 96f);
         TMP_Text note = NewLabel("Note", resultRoot.transform, "YOU KEPT THEM OFF IT TO THE LAST SECOND  ·  YOU WIN", 30f, new Color(0.72f, 0.72f, 0.78f, 0.9f));
         Centre(note.rectTransform, -40f, 1400f, 40f);

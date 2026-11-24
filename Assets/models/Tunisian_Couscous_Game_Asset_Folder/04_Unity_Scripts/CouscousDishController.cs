@@ -4,8 +4,10 @@ using UnityEngine;
 /// Controls the Tunisian Couscous Dish (Tebsi Kosksi) depletion from 100% full down to 0% empty plate.
 /// Attach this script to the root of 'Tunisian_Couscous_All_14_Parts_Separated' or 'Tunisian_Couscous_Animated_100_to_0'.
 /// </summary>
+// IDishFill is the game's side of this: it is what makes the couscous one of the dishes the flies
+// raid, and the only reason FoodDish can sit on the coffee mug as happily as it sits here.
 [ExecuteAlways]
-public class CouscousDishController : MonoBehaviour
+public class CouscousDishController : MonoBehaviour, IDishFill
 {
     [Header("Dish Fill Percentage (100% = Full, 0% = Empty Plate)")]
     [Range(0f, 100f)]
@@ -33,6 +35,16 @@ public class CouscousDishController : MonoBehaviour
         ("02_Meat_Lamb_Shank_Main", 30f),
         ("05_Chickpeas_Cluster", 30f)
     };
+
+    /// <summary>
+    /// IDishFill: how much is left, 0 to 100. FoodDish reads and writes it; the clamp is here because
+    /// the amount left comes over the network in a room and a bad number would turn the garnishes back on.
+    /// </summary>
+    public float FillPercent
+    {
+        get => dishPercentage;
+        set => dishPercentage = Mathf.Clamp(value, 0f, 100f);
+    }
 
     void Update()
     {

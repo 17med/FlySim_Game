@@ -2,8 +2,10 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-// What the players need to see while the kitchen is being raided: how long is left, how much couscous
-// is left, and what the key under their finger does.
+// What the players need to see while the kitchen is being raided: how long is left, how much food is
+// left, and what the key under their finger does.
+// The bar is every dish in the kitchen averaged together, not the couscous alone: there is coffee in
+// the living room too, so the lines below say "the food" rather than naming one of them.
 // The HUD lives in each kitchen scene (Tools > Match > Add HUD To Open Scene makes it once), so its
 // texts and bar are placed, sized and coloured by hand in the Editor. This script only fills them in:
 // it never moves anything, so whatever layout the scene has is the layout the players see.
@@ -25,10 +27,10 @@ public class MatchHud : MonoBehaviour
     [Tooltip("The match clock, \"09:58\".")]
     [SerializeField] TMP_Text clockText;
 
-    [Header("Couscous Bar")]
+    [Header("Food Bar")]
     [Tooltip("The coloured part of the bar. Must be a child of the bar's background: it is stretched from the left edge of its parent to show how much food is left.")]
     [SerializeField] Image foodFill;
-    [Tooltip("The \"COUSCOUS 100%\" label.")]
+    [Tooltip("The \"FOOD 100%\" label.")]
     [SerializeField] TMP_Text foodText;
 
     [Header("Lines Under The Bar")]
@@ -128,7 +130,7 @@ public class MatchHud : MonoBehaviour
         float left = Mathf.Clamp01(match.FoodLeft);
         foodFill.rectTransform.anchorMax = new Vector2(left, foodFill.rectTransform.anchorMax.y);
         foodFill.color = Color.Lerp(foodLowColor, foodColor, Mathf.Clamp01(left * 3f));
-        foodText.text = $"COUSCOUS  {Mathf.CeilToInt(left * 100f)}%";
+        foodText.text = $"FOOD  {Mathf.CeilToInt(left * 100f)}%";
     }
 
     // The line under the bar: what this player should be doing, and why they cannot.
@@ -177,8 +179,8 @@ public class MatchHud : MonoBehaviour
         {
             hintLeft -= Time.deltaTime;
             hintText.text = GameSession.LocalRole == PlayerRole.Human
-                ? "KEEP THE FLIES OFF THE COUSCOUS  ·  STAND OVER IT AND THEY CANNOT EAT"
-                : "LAND ON THE COUSCOUS AND HOLD  E  TO EAT IT";
+                ? "KEEP THE FLIES OFF THE FOOD  ·  STAND OVER IT AND THEY CANNOT EAT"
+                : "LAND ON THE FOOD AND HOLD  E  TO EAT IT";
             // Fades out over its last two seconds rather than vanishing mid-read.
             hintText.alpha = Mathf.Clamp01(hintLeft * 0.5f);
         }
@@ -204,11 +206,11 @@ public class MatchHud : MonoBehaviour
         }
 
         bool fliesWon = match.CurrentPhase == MatchDirector.Phase.FliesWon;
-        resultText.text = fliesWon ? "THE COUSCOUS IS GONE" : "THE COUSCOUS SURVIVED";
+        resultText.text = fliesWon ? "THE FOOD IS GONE" : "THE FOOD SURVIVED";
         resultText.color = match.LocalPlayerWon ? winColor : loseColor;
         resultNoteText.text = match.LocalPlayerWon
-            ? fliesWon ? "THE FLIES ATE EVERY LAST GRAIN  ·  YOU WIN" : "YOU KEPT THEM OFF IT TO THE LAST SECOND  ·  YOU WIN"
-            : fliesWon ? "THEY CLEARED THE PLATE  ·  YOU LOSE" : "THE CLOCK RAN OUT WITH FOOD STILL ON IT  ·  YOU LOSE";
+            ? fliesWon ? "THE FLIES LEFT NOTHING BUT EMPTY DISHES  ·  YOU WIN" : "YOU KEPT THEM OFF IT TO THE LAST SECOND  ·  YOU WIN"
+            : fliesWon ? "THEY CLEARED EVERY LAST DISH  ·  YOU LOSE" : "THE CLOCK RAN OUT WITH FOOD STILL ON IT  ·  YOU LOSE";
         resultRoot.SetActive(true);
     }
 

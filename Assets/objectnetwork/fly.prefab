@@ -3673,6 +3673,7 @@ GameObject:
   - component: {fileID: 862668503784722276}
   - component: {fileID: 5084734229767005869}
   - component: {fileID: 6632021358711766074}
+  - component: {fileID: 1789988962023457963}
   m_Layer: 0
   m_Name: fly
   m_TagString: Untagged
@@ -3833,6 +3834,19 @@ MonoBehaviour:
     m_Bits: 4294967295
   textColor: {r: 1, g: 0.95, b: 0.75, a: 1}
   outlineWidth: 0.2
+--- !u!114 &1789988962023457963
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2433297912782567719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7ccdee8d3dfc03d0985e108ce6c36e61, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlyHealthNetwork
+  ShowTopMostFoldoutHeaderGroup: 1
 --- !u!1 &2573173314928979463
 GameObject:
   m_ObjectHideFlags: 0
@@ -13269,6 +13283,7 @@ GameObject:
   - component: {fileID: 5651381216782587332}
   - component: {fileID: 7639067395993441201}
   - component: {fileID: 5256911397406625124}
+  - component: {fileID: 110778929127479127}
   m_Layer: 0
   m_Name: Fly_Body
   m_TagString: Untagged
@@ -13658,6 +13673,22 @@ MonoBehaviour:
   - {fileID: 8300000, guid: b292acd2d04cd4fddb8a588c6849ccdc, type: 3}
   eatVolume: 1
   eatSource: {fileID: 4944874256835711635}
+--- !u!114 &110778929127479127
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8944188680870611209}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 426bdee61c7f70de992a83703198a55e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlyHealth
+  hitsToKill: 2
+  respawnSeconds: 10
+  respawnTag: FlySpawn
+  modelRoot: {fileID: 3385633757200871507}
 --- !u!1 &8960304764851288954
 GameObject:
   m_ObjectHideFlags: 0

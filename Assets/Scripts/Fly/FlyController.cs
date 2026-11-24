@@ -111,6 +111,41 @@ public class FlyController : MonoBehaviour
     // True while the fly is knocked and cannot be steered. FlySpit reads it so a stunned fly cannot spit.
     public bool IsStunned => stunLeft > 0f;
 
+    // True while the fly is standing on something. Only meaningful on the owner's copy: on another
+    // player's this component is off and never updates it, which is why OldPersonStomp works the fly's
+    // ground contact out from the geometry instead and only reads this as a shortcut.
+    public bool IsGrounded => isGrounded;
+
+    // Puts the fly somewhere else rather than moving it there: a respawn. A CharacterController keeps
+    // its own idea of where it is and would overwrite a plain transform.position write on its next
+    // Move, so it is switched off around the write - and put back exactly as it was found, because a
+    // dead fly's controller is off and coming back must not switch it on ahead of FlyHealth.
+    // Everything that was carrying the fly along is cleared, so it arrives at rest rather than still
+    // flying, or still tumbling from the slap that killed it, and facing where the spawn point faces.
+    public void Teleport(Vector3 position, Quaternion rotation)
+    {
+        if (controller != null)
+        {
+            bool wasEnabled = controller.enabled;
+            controller.enabled = false;
+            transform.SetPositionAndRotation(position, rotation);
+            controller.enabled = wasEnabled;
+        }
+        else
+        {
+            transform.SetPositionAndRotation(position, rotation);
+        }
+
+        flyVelocity = Vector3.zero;
+        knockVelocity = Vector3.zero;
+        stunLeft = 0f;
+        // Otherwise the first frame back turns the fly straight off the spawn point's heading toward
+        // wherever the camera happened to be looking when it died.
+        steerYaw = rotation.eulerAngles.y;
+        // eulerAngles comes back in 0 to 360, and steering pitch is signed either side of level.
+        steerPitch = Mathf.DeltaAngle(0f, rotation.eulerAngles.x);
+    }
+
     // Flings the fly at this velocity (units per second) and stuns it. Only call it on the owner's
     // copy: on another player's copy this component is off and the network moves the fly.
     public void Knock(Vector3 velocity)
