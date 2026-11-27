@@ -62,12 +62,15 @@ public static class CoffeeCupSetup
     // 1.3 a fly would have to be standing in the coffee to drink it (the mug's radius is under 6 cm,
     // handle included, against a dish you could set it down on).
     const float MugBiteRangeScale = 2.5f;
-    // A mug is a sip, not a meal: about half a minute of uninterrupted drinking, against nearly three
-    // minutes for a full couscous at its default 0.6 percent a second.
-    const float MugBiteRate = 3f;
-    // The mug stands half a metre up on a table and FoodDish measures guarding from the old man's feet
-    // to the coffee, so in mug-radii he is a long way from it even when he is leaning over the table.
-    const float MugGuardRangeScale = 12f;
+    // The same rate as both couscous dishes (1 percent a second, 100 seconds for one fly): a dish that
+    // empties faster than the others is the one the old man can never afford to walk away from, and
+    // one that empties slower is a free one. HouseBuildPipeline sets the couscous to the same number.
+    const float MugBiteRate = 1f;
+    // FoodDish measures guarding flat along the floor from the middle of the old man's body, in
+    // mug-radii. The mug's radius is under 6 cm, so 15 radii is under 0.9 m: standing at the coffee
+    // table guards it, standing across the room does not.
+    // Above the inspector's 12 slider limit on purpose; the value is set here, not dragged.
+    const float MugGuardRangeScale = 15f;
 
     [MenuItem("Tools/Match/Place Coffee In Living Room")]
     static void PlaceCoffeeFromMenu()

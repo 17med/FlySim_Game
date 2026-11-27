@@ -29,6 +29,14 @@ public static class LobbyWiring
     const float AddressWidth = 240f;
     const float PortWidth = 110f;
 
+    // The side rails get the bottom bar's glass panel behind them, copied from it so they match.
+    const string RailsName = "L2_Rails";
+    static readonly string[] RailNames = { "Rail_Left", "Rail_Right" };
+    static readonly string[] GlassPieceNames = { "Glass_Rim", "Glass_Fill", "Glass_Highlight" };
+    const string RailGlassPrefix = "Rail_";
+    // How far the glass reaches past the rail's text on every side, in the canvas's reference pixels.
+    const float RailGlassPadding = 20f;
+
     [MenuItem("Tools/Main Menu/Wire Lobby")]
     static void Wire()
     {
@@ -210,6 +218,9 @@ public static class LobbyWiring
         connector.portInput = EnsurePortInput(connector.addressInput);
         connector.actionBarRoot = Require(scene, "L3_ActionBar");
         connector.roomRoot = Require(scene, "L5_Room");
+        // Optional: a menu without rails simply has nothing to hide.
+        connector.railsRoot = FindInScene(scene, RailsName);
+        DressRails(scene);
         connector.codeValueText = RequireComponentOn<TMP_Text>(scene, "Code_Value");
         connector.addressValueText = EnsureAddressValue(scene);
         connector.copyButton = RequireButton(scene, "Copy_Button");
@@ -228,6 +239,68 @@ public static class LobbyWiring
         ClearPersistentClicks(connector.copyButton);
         ClearPersistentClicks(connector.leaveButton);
         return true;
+    }
+
+    // Fails open: the rails only lose their background if the bar or a rail cannot be found. Copies,
+    // rather than new images, so the rails take the bar's sprite, colours and rim exactly. Earlier
+    // copies are removed first, so running Wire Lobby again does not stack them.
+    static void DressRails(Scene scene)
+    {
+        GameObject bar = FindInScene(scene, "L3_ActionBar");
+        if (bar == null)
+            return;
+        foreach (string railName in RailNames)
+        {
+            GameObject rail = FindInScene(scene, railName);
+            if (rail == null)
+                continue;
+            foreach (string piece in GlassPieceNames)
+            {
+                GameObject old = ChildIn(rail, RailGlassPrefix + piece);
+                if (old != null)
+                    Undo.DestroyObjectImmediate(old);
+            }
+            // The rail is taller than its text (it is laid out from the top), so the glass is sized to
+            // what the layout group actually needs rather than to the rail.
+            var railRect = (RectTransform)rail.transform;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(railRect);
+            float contentHeight = LayoutUtility.GetPreferredHeight(railRect);
+            for (int i = GlassPieceNames.Length - 1; i >= 0; i--)
+                CopyGlassPiece(ChildIn(bar, GlassPieceNames[i]), rail, contentHeight);
+        }
+    }
+
+    // Behind the rail's text (first children) and outside its layout, stretched over the rail plus
+    // the padding; the rim keeps the few pixels it reaches past the fill on the bar.
+    static void CopyGlassPiece(GameObject piece, GameObject rail, float contentHeight)
+    {
+        if (piece == null)
+            return;
+        GameObject copy = Object.Instantiate(piece, rail.transform);
+        copy.name = RailGlassPrefix + piece.name;
+        Undo.RegisterCreatedObjectUndo(copy, "Wire Lobby");
+        copy.transform.SetAsFirstSibling();
+        EnsureComponent<LayoutElement>(copy).ignoreLayout = true;
+        var rect = (RectTransform)copy.transform;
+        var source = (RectTransform)piece.transform;
+        rect.pivot = source.pivot;
+        if (source.anchorMin.y > 0.5f)
+        {
+            // The highlight: a 2 px line just inside the glass's top edge, inset from its corners as
+            // the bar's is (it is 36 px narrower than the bar).
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(-RailGlassPadding + 18f, RailGlassPadding - 3f);
+            rect.offsetMax = new Vector2(RailGlassPadding - 18f, RailGlassPadding - 1f);
+            return;
+        }
+        // The fill covers the rail's text plus the padding, hanging from the rail's top; the rim reaches
+        // past it by as much as it does on the bar (its size delta, split between the two sides).
+        float grow = RailGlassPadding + source.sizeDelta.x * 0.5f;
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = new Vector2(-grow, -contentHeight - grow);
+        rect.offsetMax = new Vector2(grow, grow);
     }
 
     static bool WireRoom(Scene scene, LobbyUI ui)

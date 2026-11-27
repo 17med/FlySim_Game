@@ -44,22 +44,34 @@ public static class KitchenOnlineWiring
             Debug.LogError($"Wire Network Players: open {GameSceneManager.KitchenOnlineScene} first (the open scene is '{scene.name}').");
             return;
         }
+        if (WireScene(scene))
+        {
+            Debug.Log($"Wire Network Players: done. Save {scene.name} (Ctrl+S) and make sure it is in File > Build Profiles > Scene List.");
+        }
+    }
 
+    // The whole step on the online kitchen, which the caller has open: both player prefabs, the prefab
+    // list, the props and the spawner. Marks the scene dirty but does not save it, so a hand run can be
+    // looked over first; HouseBuildPipeline calls it and saves.
+    // Fails closed: a prefab that cannot be wired or a missing spawn point stops the run before the
+    // scene's spawner is touched.
+    internal static bool WireScene(Scene scene)
+    {
         bool prefabsWired = WirePrefab(FlyPrefabPath, typeof(FlyController), typeof(FlySpitNetwork), typeof(FlyKnockbackNetwork), typeof(PlayerNameTag))
                             && WirePrefab(HumanPrefabPath, typeof(OldPersonFPSController), typeof(OldPersonArmNetwork), typeof(OldPersonSpitNetwork), typeof(PlayerNameTag))
                             && RegisterPrefabs();
         if (!prefabsWired)
         {
-            return;
+            return false;
         }
         RemovePlacedBodies(scene);
         if (!WireSpawner(scene, WireProps(scene)))
         {
-            return;
+            return false;
         }
         DisableSwapping(scene);
         EditorSceneManager.MarkSceneDirty(scene);
-        Debug.Log($"Wire Network Players: done. Save {scene.name} (Ctrl+S) and make sure it is in File > Build Profiles > Scene List.");
+        return true;
     }
 
     // NetworkObject on the root, NetworkTransform on whatever the controller moves, NetworkAnimator on

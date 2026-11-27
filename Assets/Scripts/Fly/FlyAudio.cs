@@ -15,6 +15,12 @@ public class FlyAudio : MonoBehaviour
     [Tooltip("Pitch of the buzz at full boost speed; hovering stays at 1 and cruising falls in between, so the fly is heard speeding up as well as seen. 1 turns the ramp off.")]
     [SerializeField, Range(0.5f, 2f)] float boostPitch = 1.25f;
 
+    [Header("Heard By Other Players")]
+    [Tooltip("Within this distance another player hears the buzz at full volume, in world units (the house is 45 to the metre, so 27 is about 0.6 m: an arm's length from the old man's face).")]
+    [SerializeField, Min(0.01f)] float fullVolumeRange = 27f;
+    [Tooltip("Beyond this distance another player no longer hears the buzz at all, in world units (225 is about 5 m: a room away).")]
+    [SerializeField, Min(0.02f)] float silentRange = 225f;
+
     static readonly AudioClip[] Silence = new AudioClip[0];
 
     FlyController fly;
@@ -22,6 +28,8 @@ public class FlyAudio : MonoBehaviour
     AudioSource source;
     // The list the current clip came from, so a change of state is noticed.
     AudioClip[] playingSounds;
+    // Whether the source is currently set up to be heard by another player; null until the first frame.
+    bool? isHeardByOthers;
 
     void Awake()
     {
@@ -42,11 +50,42 @@ public class FlyAudio : MonoBehaviour
             _ => (Silence, 0f),
         };
         source.volume = GameAudio.Scale(volume);
-        // Flat on the owner's copy: the orbit camera sits several units back, where a positional
-        // sound would be faint. Other players hear the fly from where it is.
-        source.spatialBlend = fly.enabled ? 0f : 1f;
+        ApplyHearing(!fly.enabled);
         source.pitch = BuzzPitch();
         Play(sounds);
+    }
+
+    // Flat on the owner's copy: the orbit camera sits several units back, where a positional sound
+    // would be faint. Other players hear the fly from where it is, through a fade sized for the house.
+    // Unity's default fade is sized for a world of 1 unit to the metre: it starts halving the volume one
+    // unit out, so in a house blown up 45 times the old man heard about 2% of a fly a metre from his face,
+    // which is to say nothing. Set only when it changes, because SetCustomCurve copies the curve.
+    void ApplyHearing(bool heardByOthers)
+    {
+        if (isHeardByOthers == heardByOthers)
+            return;
+        isHeardByOthers = heardByOthers;
+        source.spatialBlend = heardByOthers ? 1f : 0f;
+        if (!heardByOthers)
+            return;
+        source.rolloffMode = AudioRolloffMode.Custom;
+        source.maxDistance = silentRange;
+        source.SetCustomCurve(AudioSourceCurveType.CustomRolloff, BuzzFade());
+    }
+
+    // Full volume up close, half at two and a half times that, faint at five times, silent at Silent
+    // Range. The steep middle is the point: the buzz is not background noise but something that gets
+    // louder fast as the fly closes in, which is what makes it annoying. The curve runs over 0 to 1 of
+    // Silent Range; the close share is capped so its keys stay in order whatever the Inspector says.
+    AnimationCurve BuzzFade()
+    {
+        float close = Mathf.Clamp(fullVolumeRange / silentRange, 0.01f, 0.18f);
+        return new AnimationCurve(
+            new Keyframe(0f, 1f),
+            new Keyframe(close, 1f),
+            new Keyframe(close * 2.5f, 0.5f),
+            new Keyframe(close * 5f, 0.15f),
+            new Keyframe(1f, 0f));
     }
 
     // Faster flight buzzes higher, the same way FlyController beats the wings faster. Only on the

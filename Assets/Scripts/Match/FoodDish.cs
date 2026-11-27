@@ -21,13 +21,13 @@ public class FoodDish : MonoBehaviour
     // often rather than once at the start.
     const float GuardSearchInterval = 0.5f;
 
-    [Tooltip("Percent of the dish one fly eats per second of holding Interact. 0.6 clears a full dish in just under three minutes of uninterrupted eating, so a ten minute match is lost by a human who never comes to the table and winnable by one who does. Flies eating together stack, so raise it for a one fly game and lower it for four.")]
+    [Tooltip("Percent of the dish one fly eats per second of holding Interact. 1 clears a full dish in 100 seconds of one fly eating without a break; give every dish in a scene the same rate, so no dish is a free one the human cannot afford to leave. Flies eating together stack, so raise it for a one fly game and lower it for four.")]
     [SerializeField, Range(0.05f, 25f)] float biteRate = 0.6f;
 
     [Tooltip("How far from the middle of the dish a fly can eat, as a multiple of the dish's own radius. Taken from the model's bounds, so it follows whatever scale the dish is placed at.")]
     [SerializeField, Range(0.5f, 4f)] float biteRangeScale = 1.3f;
 
-    [Tooltip("How close the old man has to be to stop the flies eating, as a multiple of the dish's own radius. Within this the dish is guarded and a bite is refused.")]
+    [Tooltip("How close the old man has to stand to stop the flies eating, as a multiple of the dish's own radius, measured flat along the floor from the middle of his body. Within this the dish is guarded and a bite is refused.")]
     [SerializeField, Range(1f, 12f)] float guardRangeScale = 3.5f;
 
     [Header("Bite")]
@@ -48,6 +48,8 @@ public class FoodDish : MonoBehaviour
     // and a plate can both be a dish.
     IDishFill fill;
     Transform guard;
+    // How tall the old man stands, in world units, read from his CharacterController when he is found.
+    float guardHeight;
     float guardSearchAt;
     // Bounds radius of the dish in world units, worked out once from its renderers.
     float radius;
@@ -83,8 +85,25 @@ public class FoodDish : MonoBehaviour
         get
         {
             Transform keeper = Guard();
-            return keeper != null && Vector3.Distance(keeper.position, BitePoint) <= GuardRange;
+            return keeper != null && IsWithinGuard(keeper.position);
         }
+    }
+
+    // Measured flat, not in 3D. His position is his feet and every dish sits on furniture, so in 3D the
+    // height of the table alone was more than the guard range: standing right at the table guarded
+    // nothing and the flies ate in front of him. Flat, standing at the dish is what guards it - as long
+    // as the food is somewhere between his feet and the top of his head, so a dish on the floor above
+    // or below is not guarded through the ceiling.
+    bool IsWithinGuard(Vector3 feet)
+    {
+        Vector3 food = BitePoint;
+        float height = food.y - feet.y;
+        if (height < -GuardRange || height > guardHeight)
+        {
+            return false;
+        }
+        Vector2 flat = new Vector2(food.x - feet.x, food.z - feet.z);
+        return flat.magnitude <= GuardRange;
     }
 
     public bool InBiteRange(Vector3 position)
@@ -229,6 +248,13 @@ public class FoodDish : MonoBehaviour
         guardSearchAt = Time.time + GuardSearchInterval;
         OldPersonFPSController keeper = FindAnyObjectByType<OldPersonFPSController>(FindObjectsInactive.Exclude);
         guard = keeper != null ? keeper.transform : null;
+        if (guard != null)
+        {
+            CharacterController body = guard.GetComponent<CharacterController>();
+            // Fails open to the guard range as his height: a guard that still works close to the floor
+            // beats a dish that can never be guarded because his height could not be read.
+            guardHeight = body != null ? body.height * Mathf.Abs(guard.lossyScale.y) : GuardRange;
+        }
         return guard;
     }
 
@@ -242,7 +268,11 @@ public class FoodDish : MonoBehaviour
         }
         Gizmos.color = new Color(0.4f, 1f, 0.4f, 0.8f);
         Gizmos.DrawWireSphere(BitePoint, BiteRange);
+        // The guard is drawn as a flat circle around the food, because it is measured flat: seen from
+        // above, the old man's feet have to be inside it.
         Gizmos.color = new Color(1f, 0.4f, 0.3f, 0.5f);
-        Gizmos.DrawWireSphere(BitePoint, GuardRange);
+        Gizmos.matrix = Matrix4x4.TRS(BitePoint, Quaternion.identity, new Vector3(1f, 0.001f, 1f));
+        Gizmos.DrawWireSphere(Vector3.zero, GuardRange);
+        Gizmos.matrix = Matrix4x4.identity;
     }
 }

@@ -25,6 +25,8 @@ public class LocalNetworkConnector : MonoBehaviour
     public TMP_InputField portInput;
     [Tooltip("L3_ActionBar - hidden while a room is open so CREATE cannot be pressed twice.")]
     public GameObject actionBarRoot;
+    [Tooltip("L2_Rails - the WHAT'S NEW and CONTROLS rails. Hidden while a room is open: they stand where the lobby's flyer and human panels do, and their text showed through those panels.")]
+    public GameObject railsRoot;
 
     [Header("Room")]
     [Tooltip("L5_Room - the lobby panel.")]
@@ -285,6 +287,7 @@ public class LocalNetworkConnector : MonoBehaviour
     void ShowRoom()
     {
         if (actionBarRoot != null) actionBarRoot.SetActive(false);
+        if (railsRoot != null) railsRoot.SetActive(false);
         if (roomRoot != null) roomRoot.SetActive(true);
         // 127.0.0.1 has no code worth reading: two builds on one machine join with an empty box, and
         // the address is what the room shows them instead.
@@ -303,6 +306,7 @@ public class LocalNetworkConnector : MonoBehaviour
     {
         if (roomRoot != null) roomRoot.SetActive(false);
         if (actionBarRoot != null) actionBarRoot.SetActive(true);
+        if (railsRoot != null) railsRoot.SetActive(true);
         if (createButton != null) createButton.interactable = true;
         if (joinButton != null) joinButton.interactable = true;
         roomCode = "";

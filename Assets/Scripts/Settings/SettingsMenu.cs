@@ -1,3 +1,4 @@
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -29,10 +30,16 @@ public class SettingsMenu : MonoBehaviour
     public Slider sfxSlider;
 
     [Header("Match")]
-    [Tooltip("How many minutes a raid runs for, in whole minutes from 10 to 30. Only the host's value counts; the lobby sends it to the room.")]
-    public Slider matchLengthSlider;
-    [Tooltip("The row's own label, rewritten to read \"MATCH LENGTH  ·  12 MIN\" so the number is visible while dragging.")]
+    [Tooltip("How many minutes a raid runs for, picked from a short list (MatchLengthChoices). Only the host's value counts; the lobby sends it to the room.")]
+    public TMP_Dropdown matchLengthDropdown;
+    [Tooltip("The row's own label. The dropdown shows the minutes, so this only names the setting.")]
     public TMP_Text matchLengthLabel;
+
+    // A pick from a handful of round numbers instead of a slider: nobody plans a 13 minute raid, and
+    // a dropdown can be set in one click without dragging to an exact number. Values outside
+    // GameSettings' range are left out, so the list cannot offer a length the game would clamp.
+    static readonly int[] MatchLengthChoices = { 5, 10, 15, 20, 25, 30 };
+    int[] matchLengths = new int[0];
 
     Vector2Int[] resolutions = new Vector2Int[0];
     // Set while the controls are being filled in from GameSettings, so their change callbacks do not
@@ -51,6 +58,8 @@ public class SettingsMenu : MonoBehaviour
 
         resolutions = GameSettings.SupportedResolutions();
         FillResolutionOptions();
+        // Before Fill, which selects the saved length among these options.
+        FillMatchLengthOptions();
         Fill();
 
         Bind(openButton, Open);
@@ -146,11 +155,11 @@ public class SettingsMenu : MonoBehaviour
         {
             fullscreenToggle.SetIsOnWithoutNotify(GameSettings.Fullscreen);
         }
-        if (matchLengthSlider != null)
+        if (matchLengthDropdown != null)
         {
-            matchLengthSlider.SetValueWithoutNotify(GameSettings.MatchMinutes);
+            matchLengthDropdown.SetValueWithoutNotify(NearestMatchLengthIndex(GameSettings.MatchMinutes));
+            matchLengthDropdown.RefreshShownValue();
         }
-        ShowMatchLength(GameSettings.MatchMinutes);
         if (resolutionDropdown != null)
         {
             resolutionDropdown.SetValueWithoutNotify(CurrentResolutionIndex());
@@ -209,32 +218,50 @@ public class SettingsMenu : MonoBehaviour
 
     // Its own binding rather than Listen's: this slider counts whole minutes from 10 to 30 instead
     // of running 0 to 1, and the row's label has to show the number as it is dragged.
-    void ListenMatchLength()
-    {
-        if (matchLengthSlider == null)
-        {
-            return;
-        }
-        matchLengthSlider.minValue = GameSettings.MinMatchMinutes;
-        matchLengthSlider.maxValue = GameSettings.MaxMatchMinutes;
-        matchLengthSlider.wholeNumbers = true;
-        matchLengthSlider.onValueChanged.AddListener(value =>
-        {
-            int minutes = Mathf.RoundToInt(value);
-            if (!filling)
-            {
-                GameSettings.MatchMinutes = minutes;
-            }
-            ShowMatchLength(minutes);
-        });
-    }
-
-    void ShowMatchLength(int minutes)
+    void FillMatchLengthOptions()
     {
         if (matchLengthLabel != null)
         {
-            matchLengthLabel.text = $"MATCH LENGTH  ·  {minutes} MIN";
+            matchLengthLabel.text = "MATCH LENGTH";
         }
+        matchLengths = System.Array.FindAll(MatchLengthChoices,
+            minutes => minutes >= GameSettings.MinMatchMinutes && minutes <= GameSettings.MaxMatchMinutes);
+        if (matchLengthDropdown == null)
+        {
+            return;
+        }
+        matchLengthDropdown.ClearOptions();
+        matchLengthDropdown.AddOptions(System.Array.ConvertAll(matchLengths, minutes => $"{minutes} MIN").ToList());
+    }
+
+    void ListenMatchLength()
+    {
+        if (matchLengthDropdown == null)
+        {
+            return;
+        }
+        matchLengthDropdown.onValueChanged.AddListener(index =>
+        {
+            if (!filling && index >= 0 && index < matchLengths.Length)
+            {
+                GameSettings.MatchMinutes = matchLengths[index];
+            }
+        });
+    }
+
+    // The saved length may be one the list does not offer (an older build saved any whole minute), so
+    // the closest choice is shown; the saved value itself only changes when the player picks one.
+    int NearestMatchLengthIndex(int minutes)
+    {
+        int best = 0;
+        for (int i = 1; i < matchLengths.Length; i++)
+        {
+            if (Mathf.Abs(matchLengths[i] - minutes) < Mathf.Abs(matchLengths[best] - minutes))
+            {
+                best = i;
+            }
+        }
+        return best;
     }
 
     void Listen(Slider slider, UnityEngine.Events.UnityAction<float> set)

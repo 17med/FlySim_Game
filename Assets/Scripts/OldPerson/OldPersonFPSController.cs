@@ -179,10 +179,12 @@ public class OldPersonFPSController : MonoBehaviour
             animator.SetFloat(OldPersonCrouchPose.CrouchAnimParameter, crouchAmount);
     }
 
-    // How far below the standing eye the camera sits, in this object's local space. Taken from the
-    // body's actual hip drop (last frame's, which at 0.2 s down is not visible), so the view lowers as
-    // far as the body does whatever the bend angles are tuned to.
-    float CrouchEyeDrop() => crouchPose != null && crouchPose.isActiveAndEnabled ? crouchPose.HipDrop / bodyScale : 0f;
+    // How far from the standing eye the camera sits, in this object's local space. Taken from where the
+    // crouch actually moved the head (last frame's, which at 0.2 s down is not visible) - down with the
+    // hips and forward with the lean - so the camera stays in the head whatever the bend angles are
+    // tuned to, instead of being left inside the neck.
+    Vector3 CrouchEyeShift() =>
+        crouchPose != null && crouchPose.isActiveAndEnabled ? transform.InverseTransformVector(crouchPose.HeadShift) : Vector3.zero;
 
     // LateUpdate because the Animator poses the bones between Update and LateUpdate; tilting them in
     // Update would be overwritten by the Idle/Walk clip the same frame.
@@ -280,7 +282,7 @@ public class OldPersonFPSController : MonoBehaviour
         // the eyes stay inside the (hidden) head.
         float headPitch = Mathf.Clamp(pitch, -maxHeadPitch, maxHeadPitch) * cameraFollowsHead;
         viewCamera.transform.localPosition = neckPivot + Quaternion.Euler(headPitch, 0f, 0f) * (eyePosition - neckPivot)
-                                             + Vector3.down * CrouchEyeDrop();
+                                             + CrouchEyeShift();
     }
 
     // Walks along the ground relative to where the body faces, with gravity and jumping.

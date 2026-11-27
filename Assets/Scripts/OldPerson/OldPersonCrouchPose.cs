@@ -25,11 +25,15 @@ public class OldPersonCrouchPose : MonoBehaviour
     [Tooltip("Degrees the back leans forward when fully crouched, so his weight sits over his knees instead of falling backwards.")]
     [SerializeField, Range(0f, 60f)] float spineLean = 25f;
 
-    // How far the hips were lowered this frame, in world units. OldPersonFPSController moves the
-    // camera down by the same amount, so the view drops exactly as far as the body does.
-    public float HipDrop { get; private set; }
+    // How far the crouch moved the head this frame, in world units. OldPersonFPSController moves the
+    // camera by the same amount. It has to be the head and not only the hip drop: the back's lean carries
+    // the head forward too, and a camera that only went straight down was left behind it, inside the
+    // neck and shoulders.
+    public Vector3 HeadShift { get; private set; }
 
     Transform hips;
+    // Optional: without it the hips stand in, which loses the lean's forward shift but still drops the view.
+    Transform head;
     Transform spine;
     Transform leftThigh, leftShin, leftFoot;
     Transform rightThigh, rightShin, rightFoot;
@@ -50,6 +54,7 @@ public class OldPersonCrouchPose : MonoBehaviour
     {
         hips = animator.GetBoneTransform(HumanBodyBones.Hips);
         spine = animator.GetBoneTransform(HumanBodyBones.Spine);
+        head = animator.GetBoneTransform(HumanBodyBones.Head);
         leftThigh = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
         leftShin = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
         leftFoot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
@@ -67,19 +72,21 @@ public class OldPersonCrouchPose : MonoBehaviour
     void LateUpdate()
     {
         float amount = Mathf.Clamp01(animator.GetFloat(CrouchAnimParameter));
-        HipDrop = 0f;
+        HeadShift = Vector3.zero;
         if (amount <= 0f)
             return;
 
+        Transform headOrHips = head != null ? head : hips;
+        Vector3 headBefore = headOrHips.position;
         float lowestFootBefore = LowestFoot();
         BendLeg(leftThigh, leftShin, leftFoot, amount);
         BendLeg(rightThigh, rightShin, rightFoot, amount);
         // Bending the knees with the hips held still lifts the feet off the floor; lowering the hips by
         // exactly that much puts them back, whatever the rig's leg lengths.
-        HipDrop = Mathf.Max(0f, LowestFoot() - lowestFootBefore);
-        hips.position -= Vector3.up * HipDrop;
+        hips.position -= Vector3.up * Mathf.Max(0f, LowestFoot() - lowestFootBefore);
         if (spine != null)
             Rotate(spine, spineLean * amount);
+        HeadShift = headOrHips.position - headBefore;
     }
 
     void BendLeg(Transform thigh, Transform shin, Transform foot, float amount)

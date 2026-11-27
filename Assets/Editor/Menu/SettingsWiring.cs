@@ -23,7 +23,8 @@ public static class SettingsWiring
     const string SfxRowName = "Row_SfxVolume";
     const string NameRowName = "Row_PlayerName";
     const string MatchRowName = "Row_MatchLength";
-    const string MatchSliderName = "Match_Slider";
+    const string MatchDropdownName = "Match_Dropdown";
+    const string ResolutionDropdownName = "Resolution_Dropdown";
     const string SfxSliderName = "Sfx_Slider";
     const string NameInputName = "Name_Input";
     const string DividerName = "Divider";
@@ -50,13 +51,13 @@ public static class SettingsWiring
 
         Slider sfxSlider = EnsureSfxRow(panel, musicRow);
         TMP_InputField nameInput = EnsureNameRow(scene, panel);
-        Slider matchSlider = EnsureMatchRow(panel, musicRow, out TMP_Text matchLabel);
-        if (sfxSlider == null || nameInput == null || matchSlider == null)
+        TMP_Dropdown matchDropdown = EnsureMatchRow(scene, panel, musicRow, out TMP_Text matchLabel);
+        if (sfxSlider == null || nameInput == null || matchDropdown == null)
         {
             return;
         }
 
-        if (!WireMenu(scene, uiRoot, modal, sfxSlider, nameInput, matchSlider, matchLabel) || !WireQuit(scene))
+        if (!WireMenu(scene, uiRoot, modal, sfxSlider, nameInput, matchDropdown, matchLabel) || !WireQuit(scene))
         {
             return;
         }
@@ -98,10 +99,10 @@ public static class SettingsWiring
         return slider;
     }
 
-    // How long a raid runs for: another copy of a volume row, with the slider counting whole minutes
-    // instead of a level. The label carries the number ("MATCH LENGTH  ·  10 MIN"), which SettingsMenu
-    // rewrites as the slider moves, so the row needs no second label of its own.
-    static Slider EnsureMatchRow(GameObject panel, GameObject musicRow, out TMP_Text label)
+    // How long a raid runs for: another copy of a volume row, whose slider is swapped for a copy of the
+    // resolution dropdown, so the pick looks like the panel's other dropdown. SettingsMenu fills in the
+    // choices (5 to 30 minutes in fives); the row's label only names the setting.
+    static TMP_Dropdown EnsureMatchRow(Scene scene, GameObject panel, GameObject musicRow, out TMP_Text label)
     {
         label = null;
         GameObject row = ChildIn(panel, MatchRowName);
@@ -120,22 +121,41 @@ public static class SettingsWiring
         {
             Undo.RecordObject(label, "Wire Settings");
             label.gameObject.name = $"{MatchRowName}_Label";
-            label.text = $"MATCH LENGTH  ·  {GameSettings.MatchMinutes} MIN";
+            label.text = "MATCH LENGTH";
         }
+        TMP_Dropdown existing = row.GetComponentInChildren<TMP_Dropdown>(true);
+        return existing != null ? existing : ReplaceSliderWithDropdown(scene, row);
+    }
+
+    // Fails closed: without the slider's place to fill or a dropdown to copy, the row would have no
+    // control at all, which is worse than reporting it and leaving the row as it was.
+    static TMP_Dropdown ReplaceSliderWithDropdown(Scene scene, GameObject row)
+    {
         Slider slider = row.GetComponentInChildren<Slider>(true);
-        if (slider == null)
+        TMP_Dropdown template = ComponentIn<TMP_Dropdown>(scene, ResolutionDropdownName);
+        if (slider == null || template == null)
         {
-            Debug.LogError($"Wire Settings: the copy of {MusicRowName} has no Slider, so there is nothing to set the match length with.");
+            Debug.LogError($"Wire Settings: {MatchRowName} needs its slider and the panel's {ResolutionDropdownName} to make the match length dropdown; nothing was changed in that row.");
             return null;
         }
-        Undo.RecordObject(slider, "Wire Settings");
-        slider.gameObject.name = MatchSliderName;
-        // Set here as well as at runtime, so the row reads sensibly in the Editor before Play.
-        slider.minValue = GameSettings.MinMatchMinutes;
-        slider.maxValue = GameSettings.MaxMatchMinutes;
-        slider.wholeNumbers = true;
-        slider.value = GameSettings.MatchMinutes;
-        return slider;
+        var sliderRect = (RectTransform)slider.transform;
+        GameObject copy = Object.Instantiate(template.gameObject, sliderRect.parent);
+        copy.name = MatchDropdownName;
+        Undo.RegisterCreatedObjectUndo(copy, "Wire Settings");
+        var rect = (RectTransform)copy.transform;
+        // Exactly where the slider was, so the row keeps its layout.
+        rect.anchorMin = sliderRect.anchorMin;
+        rect.anchorMax = sliderRect.anchorMax;
+        rect.pivot = sliderRect.pivot;
+        rect.anchoredPosition = sliderRect.anchoredPosition;
+        rect.sizeDelta = sliderRect.sizeDelta;
+        rect.SetSiblingIndex(sliderRect.GetSiblingIndex());
+        var dropdown = copy.GetComponent<TMP_Dropdown>();
+        // The copy carries the resolution dropdown's listeners set up in the scene, if any; SettingsMenu
+        // adds its own at runtime.
+        dropdown.onValueChanged.RemoveAllListeners();
+        Undo.DestroyObjectImmediate(slider.gameObject);
+        return dropdown;
     }
 
     // The name the lobby shows the other players. The row is a copy of a volume row with its slider
@@ -219,7 +239,7 @@ public static class SettingsWiring
     // ---- the script behind the panel -----------------------------------------------------------
 
     static bool WireMenu(Scene scene, GameObject uiRoot, GameObject modal, Slider sfxSlider, TMP_InputField nameInput,
-                         Slider matchSlider, TMP_Text matchLabel)
+                         TMP_Dropdown matchDropdown, TMP_Text matchLabel)
     {
         SettingsMenu menu = uiRoot.GetComponent<SettingsMenu>();
         if (menu == null)
@@ -238,7 +258,7 @@ public static class SettingsWiring
         menu.masterSlider = ComponentIn<Slider>(scene, "Master_Slider");
         menu.musicSlider = ComponentIn<Slider>(scene, "Music_Slider");
         menu.sfxSlider = sfxSlider;
-        menu.matchLengthSlider = matchSlider;
+        menu.matchLengthDropdown = matchDropdown;
         menu.matchLengthLabel = matchLabel;
 
         if (menu.openButton == null || menu.masterSlider == null || menu.musicSlider == null)

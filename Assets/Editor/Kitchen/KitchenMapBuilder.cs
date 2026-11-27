@@ -5,14 +5,23 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
-// Builds a flyable two-room house into Assets/Scenes/Kitchen.unity
-// (Tools > Stylized Kitchen > Build Kitchen Map).
+// Builds the flyable house - a dining hub along the south with a kitchen, a pantry and a living room
+// side by side to its north - into Assets/Scenes/Kitchen.unity (Tools > Stylized Kitchen > Build
+// Kitchen Map), or into any open scene through BuildHouseInto.
+// It is laid out for a fair match: the old man starts in the middle of the hub at about the same
+// walk from all three dishes, every north room has a doorway from the hub and one from its
+// neighbour so nobody is cornered at a single choke point, the dishes stand on free-standing tables
+// he can walk round and guard, and the flies start high in the corners, away from the food.
 // Anything that only exists as an Unreal .uasset is a coloured block; every prop with an FBX is the
-// real model. The first run copies scene.unity, so the fly, the camera and their wiring come over.
+// real model, except the pack's big tables, couch and two of its floor lamps, whose collision hulls
+// are solid boxes far bigger than what you see, so a player would bump into thin air: those pieces
+// of furniture are blocks too, so what you see is what you hit.
+// The first run copies scene.unity, so the fly, the camera and their wiring come over.
 // Later runs only rebuild the KitchenMap root, the ambient light and the sun, so other edits are kept.
 // Everything is shaded with FlySimulator/StylizedToon, which takes its bands, highlight and rim from
 // the sun, so the sun is on and the ceiling lets it in (see AimSun).
-// This file holds the entry point, the shared shell and the helpers; each room has its own file.
+// This file holds the entry points and the placing helpers; the shell, the paints, the markers and
+// each room have their own files.
 // Layout numbers are in real-world metres, scaled by WorldScale on the KitchenMap root.
 public partial class KitchenMapBuilder
 {
@@ -21,8 +30,13 @@ public partial class KitchenMapBuilder
     // Same folder as KitchenMaterialBuilder.MeshesFolder.
     const string MeshesFolder = "Assets/models/env/Content/StylizedKitchen/Meshes";
     const string MapRootName = "KitchenMap";
+    // The outdoor ground, made by hand under the KitchenMap root after a build; see KeepTerrain.
+    const string TerrainName = "Terrain";
     // The ground plane in scene.unity; the house floor replaces it.
     const string OldGroundName = "Plane";
+    // Every prop the old man may pick up and throw is a direct child of a group with this name; the
+    // match pipeline makes each of those children a physics object. Anything outside one stays put.
+    const string ThrowablesGroupName = "Throwables";
     const string ToonShaderName = "FlySimulator/StylizedToon";
     // Only for glowing lamp shades: the toon shader has no emission.
     const string LitShaderName = "Universal Render Pipeline/Lit";
@@ -35,36 +49,15 @@ public partial class KitchenMapBuilder
     // without rebuilding it.
     internal const float WorldScale = 45f;
 
-    // z runs from -HalfDepth (south) to +HalfDepth (north) in both rooms. The kitchen spans x from
-    // KitchenWest to PartitionX, then comes the partition wall, then the living room up to LivingEast.
-    const float HalfDepth = 2.5f;
     // 4 m, not a real kitchen's 2.6 m: the old man's slap reaches about 2.72 m looking up, so under
     // a 2.6 m ceiling a fly had nowhere out of his reach. Tools > Stylized Kitchen > Raise Ceiling To
     // Room Height applies a change here to a built scene without rebuilding it.
     internal const float RoomHeight = 4.0f;
-    const float WallThickness = 0.1f;
-    const float KitchenWest = -3f;
-    const float PartitionX = 3f;
-    const float LivingWest = PartitionX + WallThickness;
-    const float LivingEast = 9.1f;
-    // Each room builds and paints its own half of the partition, meeting here.
-    const float PartitionMiddle = PartitionX + WallThickness * 0.5f;
-    const float DoorwaySouth = -1.9f;
-    const float DoorwayNorth = -0.7f;
-    const float DoorwayHeight = 2.1f;
-    const float TrimWidth = 0.07f;
-    const float TrimDepth = 0.02f;
-    const float WindowHalfWidth = 0.6f;
-    const float WindowTop = 2f;
-    const float SillHeight = 1.05f;
-    const float SillDepth = 0.2f;
-    const float BaseboardHeight = 0.1f;
-    const float BaseboardDepth = 0.015f;
     // Picture frames are 2 cm thick with their pivot in the middle; this keeps the back on the wall.
     const float PictureWallGap = 0.011f;
     static readonly Color WarmLight = new Color(1f, 0.85f, 0.65f);
-    // High and from the south-south-east: the kitchen counters, the dining table and the TV screen all
-    // face the sun, and the 4 m walls cast shadows only about 2.3 m long.
+    // High and from the south-south-east: the counters, the dining table and the sofa all face the
+    // sun through the south windows, and the 4 m walls cast shadows only about 2.3 m long.
     static readonly Vector3 SunAngles = new Vector3(60f, -30f, 0f);
     // The toon shader adds ambient on top of the sun, so it is kept low to avoid washing out the bands.
     static readonly Color AmbientSky = new Color(0.46f, 0.44f, 0.41f);
@@ -73,21 +66,15 @@ public partial class KitchenMapBuilder
     static readonly Color TrimWhite = new Color(0.97f, 0.96f, 0.93f);
 
     // Facings are compass yaws for a model's front: 0 = looks north (+Z), 90 = east, 180 = south, -90 = west.
-    // Most models' fronts point +Z after import; these were measured from the FBX geometry.
-    static readonly Dictionary<string, float> FrontYawOffsets = new Dictionary<string, float>
-    {
-        { "SM_LeatherCouch", -90f },  // the armchair's seat faces +X
-        { "SM_TableBasse_01", -90f }, // the nightstand's drawer faces +X
-    };
-    // Every picture frame shows its picture on its -X side, and is single-sided: from behind it is invisible.
+    // The models placed here all have their fronts on +Z after import, except picture frames: every
+    // one shows its picture on its -X side, and is single-sided: from behind it is invisible.
     const string PicturePrefix = "SM_Frames_";
     const float PictureYawOffset = 90f;
 
     // These have no texture set in the pack and import as flat dark grey, so the placed copies are repainted.
     static readonly Dictionary<string, string> UntexturedModelPaints = new Dictionary<string, string>
     {
-        { "SM_MainTable", "Wood" }, { "SM_KitchenTable", "Wood" },
-        { "SM_LampTall_01", "Brass" }, { "SM_LampTall_02", "Brass" }, { "SM_LampTall_03", "Brass" },
+        { "SM_LampTall_03", "Brass" },
     };
 
     readonly struct Prop
@@ -120,15 +107,9 @@ public partial class KitchenMapBuilder
     [MenuItem("Tools/Stylized Kitchen/Build Kitchen Map")]
     public static void BuildKitchenMap()
     {
-        Shader toonShader = Shader.Find(ToonShaderName);
-        Shader litShader = Shader.Find(LitShaderName);
-        if (toonShader == null || litShader == null)
-        {
-            // Fails closed: every block would render magenta without them.
-            Debug.LogError($"KitchenMapBuilder: shader '{ToonShaderName}' or '{LitShaderName}' not found. " +
-                           "Check the Console for shader compile errors and that URP is the active render pipeline.");
+        // Checked before the first build copies a scene, so a broken shader leaves nothing behind.
+        if (!TryFindShaders(out _, out _))
             return;
-        }
         if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
             return;
 
@@ -141,16 +122,68 @@ public partial class KitchenMapBuilder
         }
 
         Scene scene = EditorSceneManager.OpenScene(KitchenScenePath, OpenSceneMode.Single);
-        DestroyRootObjects(scene, MapRootName);
-        new KitchenMapBuilder(toonShader, litShader).Build();
-        AimSun(scene);
+        if (!BuildHouseInto(scene))
+            return;
         if (isFirstBuild)
             SetUpCopiedScene(scene);
         EditorSceneManager.SaveScene(scene);
         Debug.Log($"KitchenMapBuilder: house built in {KitchenScenePath}.");
     }
 
-    // Only on the first build, so the player can move the fly afterwards.
+    // Replaces the house in a scene that is already open, for callers that build more than one scene.
+    // It neither opens, closes nor saves anything: that is the caller's job. Returns false, having
+    // changed nothing, when the scene is not loaded or the shaders are missing.
+    internal static bool BuildHouseInto(Scene scene)
+    {
+        if (!scene.IsValid() || !scene.isLoaded)
+        {
+            // Fails closed: there is nothing to build into, and building into the active scene instead
+            // could wreck a scene nobody asked to change.
+            Debug.LogError($"KitchenMapBuilder: scene '{scene.name}' is not open; the house was not built.");
+            return false;
+        }
+        if (!TryFindShaders(out Shader toonShader, out Shader litShader))
+            return false;
+
+        // New objects and RenderSettings (the ambient light) both go to the active scene.
+        SceneManager.SetActiveScene(scene);
+        KeepTerrain(scene);
+        FlattenTerrainUnderHouse(scene);
+        DestroyRootObjects(scene, MapRootName);
+        new KitchenMapBuilder(toonShader, litShader).Build();
+        AimSun(scene);
+        return true;
+    }
+
+    static bool TryFindShaders(out Shader toonShader, out Shader litShader)
+    {
+        toonShader = Shader.Find(ToonShaderName);
+        litShader = Shader.Find(LitShaderName);
+        if (toonShader != null && litShader != null)
+            return true;
+        // Fails closed: every block would render magenta without them.
+        Debug.LogError($"KitchenMapBuilder: shader '{ToonShaderName}' or '{LitShaderName}' not found. " +
+                       "Check the Console for shader compile errors and that URP is the active render pipeline.");
+        return false;
+    }
+
+    // The outdoor ground was made by hand inside the KitchenMap root, so throwing the old root away
+    // would delete it with the house. It is lifted out to the scene root first, keeping its world
+    // position, rotation and size; from then on rebuilds never touch it.
+    static void KeepTerrain(Scene scene)
+    {
+        foreach (GameObject sceneRoot in scene.GetRootGameObjects())
+        {
+            if (sceneRoot.name != MapRootName)
+                continue;
+            Transform terrain;
+            while ((terrain = sceneRoot.transform.Find(TerrainName)) != null)
+                terrain.SetParent(null, true);
+        }
+    }
+
+    // Only on the first build, so the player can move the fly afterwards. The fly starts where the
+    // first fly spawn marker is (see BuildMarkers).
     static void SetUpCopiedScene(Scene scene)
     {
         DestroyRootObjects(scene, OldGroundName);
@@ -158,12 +191,12 @@ public partial class KitchenMapBuilder
         {
             FlyController fly = sceneRoot.GetComponentInChildren<FlyController>(true);
             if (fly != null)
-                fly.transform.position = FlySpawn * WorldScale;
+                fly.transform.position = FirstFlySpawn * WorldScale;
         }
     }
 
     // The scene's directional light is the toon shader's main light. The ceiling casts no shadow (see
-    // Build), so the sun reaches every room; walls and furniture still do.
+    // BuildShell), so the sun reaches every room; walls and furniture still do.
     static void AimSun(Scene scene)
     {
         foreach (GameObject sceneRoot in scene.GetRootGameObjects())
@@ -196,13 +229,12 @@ public partial class KitchenMapBuilder
         root.localScale = Vector3.one * WorldScale;
         SetIndoorAmbientLight();
 
-        GameObject ceiling = Box(Group(root, "Shell"), "Ceiling", new Vector3(KitchenWest - WallThickness, RoomHeight, -HalfDepth - WallThickness),
-            new Vector3(LivingEast + WallThickness, RoomHeight + WallThickness, HalfDepth + WallThickness), PaintSurface("Ceiling", new Color(0.96f, 0.95f, 0.92f)));
-        // A roof shadow would put the whole interior in the toon shader's shadow band; letting the sun
-        // through is the usual stylized-interior cheat, and nobody sees the ceiling from above.
-        ceiling.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+        BuildShell(Group(root, "Shell"));
+        BuildHub(Group(root, "Hub"));
         BuildKitchen(Group(root, "Kitchen"));
+        BuildPantry(Group(root, "Pantry"));
         BuildLivingRoom(Group(root, "LivingRoom"));
+        BuildMarkers(Group(root, "Markers"));
     }
 
     // A warm ceiling-to-floor gradient reads as light bouncing around a room and keeps the sides of
@@ -213,65 +245,6 @@ public partial class KitchenMapBuilder
         RenderSettings.ambientSkyColor = AmbientSky;
         RenderSettings.ambientEquatorColor = AmbientEquator;
         RenderSettings.ambientGroundColor = AmbientGround;
-    }
-
-    // One room's half of the partition: the wall around the doorway plus the trim on its own face.
-    // faceX is the side the room sees, backX the middle of the partition.
-    void PartitionHalf(Transform parent, float faceX, float backX, Material wall)
-    {
-        float x0 = Mathf.Min(faceX, backX), x1 = Mathf.Max(faceX, backX);
-        Box(parent, "Partition_South", new Vector3(x0, 0f, -HalfDepth), new Vector3(x1, RoomHeight, DoorwaySouth), wall);
-        Box(parent, "Partition_North", new Vector3(x0, 0f, DoorwayNorth), new Vector3(x1, RoomHeight, HalfDepth), wall);
-        Box(parent, "Partition_Lintel", new Vector3(x0, DoorwayHeight, DoorwaySouth), new Vector3(x1, RoomHeight, DoorwayNorth), wall);
-
-        Material trim = PaintSurface("Trim", TrimWhite, 0.4f);
-        float out0 = Mathf.Min(faceX, faceX + Mathf.Sign(faceX - backX) * TrimDepth);
-        float out1 = Mathf.Max(faceX, faceX + Mathf.Sign(faceX - backX) * TrimDepth);
-        float top = DoorwayHeight + TrimWidth;
-        Box(parent, "DoorTrim_South", new Vector3(out0, 0f, DoorwaySouth - TrimWidth), new Vector3(out1, top, DoorwaySouth), trim);
-        Box(parent, "DoorTrim_North", new Vector3(out0, 0f, DoorwayNorth), new Vector3(out1, top, DoorwayNorth + TrimWidth), trim);
-        Box(parent, "DoorTrim_Head", new Vector3(out0, DoorwayHeight, DoorwaySouth - TrimWidth), new Vector3(out1, top, DoorwayNorth + TrimWidth), trim);
-    }
-
-    // An outer wall with a window, in its own frame: local x runs along the wall, z = 0 is the
-    // room-side face and +z points outside. The glass is an invisible collider, so the fly stays in.
-    void BuildWindowWall(Transform frame, float length, float windowCenter, Material wall)
-    {
-        float left = windowCenter - WindowHalfWidth, right = windowCenter + WindowHalfWidth, t = WallThickness;
-        Box(frame, "Wall_Left", new Vector3(0f, 0f, 0f), new Vector3(left, RoomHeight, t), wall);
-        Box(frame, "Wall_Right", new Vector3(right, 0f, 0f), new Vector3(length, RoomHeight, t), wall);
-        Box(frame, "Wall_BelowWindow", new Vector3(left, 0f, 0f), new Vector3(right, SillHeight, t), wall);
-        Box(frame, "Wall_AboveWindow", new Vector3(left, WindowTop, 0f), new Vector3(right, RoomHeight, t), wall);
-
-        Material trim = PaintSurface("Trim", TrimWhite, 0.4f);
-        Box(frame, "WindowSill", new Vector3(left - 0.08f, SillHeight - 0.03f, -SillDepth), new Vector3(right + 0.08f, SillHeight, t), trim);
-        Box(frame, "WindowTrim_Left", new Vector3(left - TrimWidth, SillHeight, -TrimDepth), new Vector3(left, WindowTop + TrimWidth, 0f), trim);
-        Box(frame, "WindowTrim_Right", new Vector3(right, SillHeight, -TrimDepth), new Vector3(right + TrimWidth, WindowTop + TrimWidth, 0f), trim);
-        Box(frame, "WindowTrim_Head", new Vector3(left - TrimWidth, WindowTop, -TrimDepth), new Vector3(right + TrimWidth, WindowTop + TrimWidth, 0f), trim);
-        Box(frame, "WindowMullion", new Vector3(windowCenter - 0.02f, SillHeight, t * 0.3f), new Vector3(windowCenter + 0.02f, WindowTop, t * 0.7f), trim);
-        Box(frame, "WindowTransom", new Vector3(left, 1.62f, t * 0.3f), new Vector3(right, 1.66f, t * 0.7f), trim);
-        GameObject glass = Box(frame, "WindowGlass", new Vector3(left, SillHeight, 0f), new Vector3(right, WindowTop, t), trim);
-        Object.DestroyImmediate(glass.GetComponent<MeshRenderer>());
-    }
-
-    // A wall frame placed at origin with the given compass yaw (see BuildWindowWall).
-    static Transform WallFrame(Transform parent, string name, Vector3 origin, float yaw)
-    {
-        Transform frame = Group(parent, name);
-        frame.localPosition = origin;
-        frame.localRotation = Quaternion.Euler(0f, yaw, 0f);
-        return frame;
-    }
-
-    // A baseboard along a wall face at floor level, on the left of the walking direction, which is
-    // the room side as long as each room walks its walls counter-clockwise seen from above.
-    void Baseboard(Transform parent, Vector3 start, Vector3 end)
-    {
-        Vector3 direction = (end - start).normalized;
-        Vector3 left = new Vector3(-direction.z, 0f, direction.x) * BaseboardDepth;
-        Vector3 min = Vector3.Min(start, end + left);
-        Vector3 max = Vector3.Max(start, end + left) + Vector3.up * BaseboardHeight;
-        Box(parent, "Baseboard", min, max, PaintSurface("Trim", TrimWhite, 0.4f));
     }
 
     // Stands a picture frame's back on a wall. wallPoint is on the wall face, at the frame's bottom edge.
@@ -323,12 +296,8 @@ public partial class KitchenMapBuilder
         return instance;
     }
 
-    static float FrontYawOffset(string modelName)
-    {
-        if (modelName.StartsWith(PicturePrefix))
-            return PictureYawOffset;
-        return FrontYawOffsets.TryGetValue(modelName, out float offset) ? offset : 0f;
-    }
+    static float FrontYawOffset(string modelName) =>
+        modelName.StartsWith(PicturePrefix) ? PictureYawOffset : 0f;
 
     void RepaintIfUntextured(GameObject instance, string modelName)
     {
@@ -412,66 +381,9 @@ public partial class KitchenMapBuilder
         light.transform.localPosition = position;
         light.type = type;
         light.color = WarmLight;
+        // Only the sun casts shadows: each shadowed point light renders six extra shadow maps, and
+        // with eight lamps in the house that would cost more than the soft fill they add is worth.
+        light.shadows = LightShadows.None;
         return light;
-    }
-
-    // A toon material for furniture and fittings. The shader reads smoothness from an ORM map, so each
-    // colour gets a 1x1 one; without it its white default means fully rough and fully metallic.
-    Material Paint(string name, Color color, float smoothness = 0.2f)
-    {
-        if (materials.TryGetValue(name, out Material material))
-            return material;
-        material = new Material(toonShader) { name = "Blockout_" + name };
-        material.SetColor("_BaseColor", color);
-        material.SetTexture("_ORMMap", SolidTexture(name + "_ORM", new Color(1f, 1f - smoothness, 0f)));
-        materials[name] = material;
-        return material;
-    }
-
-    // Walls, floors, ceiling and trim: big flat surfaces look heavy with an outline, so theirs is off.
-    Material PaintSurface(string name, Color color, float smoothness = 0.2f)
-    {
-        Material material = Paint(name, color, smoothness);
-        material.SetFloat("_OutlineWidth", 0f);
-        return material;
-    }
-
-    // A lamp shade or light fitting that looks switched on. URP Lit, because the toon shader has no emission.
-    Material PaintGlow(string name, Color color)
-    {
-        if (materials.TryGetValue(name, out Material material))
-            return material;
-        material = new Material(litShader) { name = "Blockout_" + name };
-        material.SetColor("_BaseColor", color);
-        material.SetFloat("_Smoothness", 0.3f);
-        material.EnableKeyword("_EMISSION");
-        material.SetColor("_EmissionColor", color * 0.8f);
-        materials[name] = material;
-        return material;
-    }
-
-    // A floor pattern from a tiny pixel grid repeated across the surface: the top face of a box is
-    // one UV square, so tiling is how many times the grid fits along the floor.
-    Material PaintPattern(string name, Color[] pixels, int width, Vector2 tiling)
-    {
-        var texture = new Texture2D(width, pixels.Length / width, TextureFormat.RGBA32, false)
-        {
-            name = "Blockout_" + name, filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat,
-        };
-        texture.SetPixels(pixels);
-        texture.Apply();
-        Material material = PaintSurface(name, Color.white, 0.35f);
-        material.SetTexture("_BaseMap", texture);
-        material.SetTextureScale("_BaseMap", tiling);
-        return material;
-    }
-
-    // ORM data is linear, not a colour, so the texture skips sRGB conversion.
-    static Texture2D SolidTexture(string name, Color value)
-    {
-        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false, true) { name = "Blockout_" + name };
-        texture.SetPixel(0, 0, value);
-        texture.Apply();
-        return texture;
     }
 }

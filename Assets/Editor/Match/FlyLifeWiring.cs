@@ -14,7 +14,8 @@ using UnityEngine.SceneManagement;
 // ids when its components are added through the Editor - and because the respawn points are found at
 // runtime by tag, which means something has to carry that tag in both kitchens. The online kitchen
 // already has the "fly pawner" objects KitchenSpawner spawns players at, so those are tagged; the
-// single player kitchen has none, so a handful of empties are made in the air around the two rooms.
+// single player kitchen has none, so it gets one empty per FlySpawn_ marker KitchenMapBuilder puts
+// under KitchenMap/Markers.
 // Run it with Kitchen open, then again with Kitchen_online open. Running it again is safe: it reuses
 // the components and the spawn points it made before, and never moves a spawn point that already
 // exists, so one dragged somewhere better by hand stays there.
@@ -38,26 +39,12 @@ public static class FlyLifeWiring
     const string SpawnGroupName = "FlySpawns";
     const string SpawnNamePrefix = "FlySpawn_";
 
-    // Where a fly can appear in the single player kitchen, in the layout metres KitchenMapBuilder
-    // builds the house in, with the compass yaw it faces (0 = north). All of them are between 1.4 m and
-    // 1.7 m up: above the counters, the tables and the bookshelf, below the 4 m ceiling and the wall
-    // cabinets' 2.15 m top, and clear of the pendant and ceiling lamps. Multiplied by WorldScale on the
-    // way into the scene, which is the whole reason they are written as metres.
-    static readonly (Vector3 Spot, float Facing)[] SinglePlayerSpawns =
-    {
-        // Beside the dining table, facing the counters and the window: where the fly already starts.
-        (new Vector3(-0.4f, 1.4f, -0.6f), 0f),
-        // Over the prep table by the doorway, looking west across the kitchen.
-        (new Vector3(1.6f, 1.5f, -0.4f), -90f),
-        // The kitchen's west half, out from the microwave and the upper cabinets, looking at the stove.
-        (new Vector3(-1.8f, 1.7f, 0.9f), 180f),
-        // Straight over the coffee table and the mug on it, looking at the TV.
-        (new Vector3(6.1f, 1.6f, 0.35f), 0f),
-        // By the living room window, looking back in at the armchairs.
-        (new Vector3(8.3f, 1.5f, 1.2f), 180f),
-        // Just inside the living room through the doorway, looking east.
-        (new Vector3(4.2f, 1.6f, 1.3f), 90f),
-    };
+    // Where a fly can appear in the single player kitchen: the house's own FlySpawn_ markers, as
+    // KitchenMapBuilder builds them (KitchenMap/Markers/FlySpawn_1..). Read from the house rather than
+    // written here, so the spawn points move with the layout instead of being left in the old one -
+    // which is what happened to the six positions this used to list.
+    const string MapRootName = "KitchenMap";
+    const string MarkersGroupName = "Markers";
 
     [MenuItem("Tools/Match/Wire Fly Lives")]
     static void WireFromMenu()
@@ -259,7 +246,7 @@ public static class FlyLifeWiring
 
         if (!isOnline)
         {
-            spawns.AddRange(MakeSinglePlayerSpawns(scene, spawns));
+            spawns.AddRange(MakeSinglePlayerSpawns(scene));
         }
         else if (spawns.Count == 0)
         {
@@ -280,20 +267,33 @@ public static class FlyLifeWiring
         return spawns.Count;
     }
 
+    // The house's own markers are left out: they are the layout the spawn points are copied from, and
+    // they go with every rebuild of KitchenMap, so tagging them would only count each spot twice.
     static bool IsSpawnPoint(Transform candidate)
     {
+        if (IsHouseMarker(candidate))
+        {
+            return false;
+        }
         return candidate.name.StartsWith(ExistingSpawnPrefix, StringComparison.Ordinal)
                || candidate.name.StartsWith(SpawnNamePrefix, StringComparison.Ordinal)
                || candidate.gameObject.CompareTag(FlyHealth.DefaultRespawnTag);
     }
 
+    static bool IsHouseMarker(Transform candidate)
+    {
+        Transform group = candidate.parent;
+        return group != null && group.name == MarkersGroupName && group.parent != null && group.parent.name == MapRootName;
+    }
+
     // The single player kitchen's own spawn points, as empties under one group at the scene root rather
     // than under KitchenMap: Build Kitchen Map throws that whole root away and rebuilds it, and spawn
-    // points that disappear with the house would take the respawn with them. At the root the group's
-    // scale is 1, so the layout metres above are multiplied by WorldScale here.
-    // Only the ones that are missing are made: a spawn point moved somewhere better by hand keeps its
-    // place however often this is run.
-    static List<Transform> MakeSinglePlayerSpawns(Scene scene, List<Transform> existing)
+    // points that disappear with the house would take the respawn with them. Each is a copy of one
+    // FlySpawn_ marker, placed in world space so the group's own transform does not matter.
+    // Only the ones that are missing from the group are made: a spawn point moved somewhere better by
+    // hand keeps its place however often this is run. HouseBuildPipeline empties the group before it
+    // runs this, which is how a new layout replaces the old spawn points.
+    static List<Transform> MakeSinglePlayerSpawns(Scene scene)
     {
         var made = new List<Transform>();
         GameObject groupObject = scene.GetRootGameObjects().FirstOrDefault(root => root.name == SpawnGroupName);
@@ -303,26 +303,45 @@ public static class FlyLifeWiring
             Undo.RegisterCreatedObjectUndo(groupObject, "Wire Fly Lives");
         }
 
-        for (int i = 0; i < SinglePlayerSpawns.Length; i++)
+        List<Transform> markers = FindSpawnMarkers(scene);
+        foreach (Transform marker in markers)
         {
-            string name = SpawnNamePrefix + (i + 1);
-            if (existing.Any(spawn => spawn.name == name))
+            if (groupObject.transform.Find(marker.name) != null)
             {
                 continue;
             }
-            (Vector3 spot, float facing) = SinglePlayerSpawns[i];
-            var spawnObject = new GameObject(name);
+            var spawnObject = new GameObject(marker.name);
             Undo.RegisterCreatedObjectUndo(spawnObject, "Wire Fly Lives");
             spawnObject.transform.SetParent(groupObject.transform, false);
-            spawnObject.transform.localPosition = spot * KitchenMapBuilder.WorldScale;
-            spawnObject.transform.localRotation = Quaternion.Euler(0f, facing, 0f);
+            spawnObject.transform.SetPositionAndRotation(marker.position, marker.rotation);
             made.Add(spawnObject.transform);
+        }
+        if (markers.Count == 0 && groupObject.transform.childCount == 0)
+        {
+            // Fails closed (TagSpawnPoints then finds nothing): a fly that dies with nowhere to come back is
+            // worse than a run that stops. The old hard-coded spots are gone because they belonged to the old house.
+            Debug.LogError($"Wire Fly Lives: {scene.name} has no {MapRootName}/{MarkersGroupName}/{SpawnNamePrefix}* markers and nothing under '{SpawnGroupName}'. " +
+                           "Build the house first (Tools > Stylized Kitchen > Build House (Both Scenes)).", groupObject);
         }
         if (made.Count > 0)
         {
-            Debug.Log($"Wire Fly Lives: made {made.Count} fly spawn point(s) under '{SpawnGroupName}' in {scene.name}, in the air around the kitchen and the living room.", groupObject);
+            Debug.Log($"Wire Fly Lives: made {made.Count} fly spawn point(s) under '{SpawnGroupName}' in {scene.name}, one per {SpawnNamePrefix} marker in the house.", groupObject);
         }
         return made;
+    }
+
+    static List<Transform> FindSpawnMarkers(Scene scene)
+    {
+        GameObject map = scene.GetRootGameObjects().FirstOrDefault(root => root.name == MapRootName);
+        Transform markers = map != null ? map.transform.Find(MarkersGroupName) : null;
+        if (markers == null)
+        {
+            return new List<Transform>();
+        }
+        return markers.Cast<Transform>()
+            .Where(marker => marker.name.StartsWith(SpawnNamePrefix, StringComparison.Ordinal))
+            .OrderBy(marker => marker.name, StringComparer.Ordinal)
+            .ToList();
     }
 
     // ---- small helpers -------------------------------------------------------------------------
