@@ -55,7 +55,12 @@ public class PlayerNameTag : NetworkBehaviour
     TMP_Text label;
     // The label's own object, kept out of the body's hierarchy so it does not inherit its scale.
     Transform labelTransform;
-    // How far above this object's origin the label floats, in world units. Measured once from the
+    // What the label follows: the object carrying the body's CharacterController, which is the part
+    // that actually moves. For the old man that is this root, but the fly's root stays at its spawn
+    // point while its child Fly_Body (FlyController, NetworkTransform) does the flying, so a label
+    // anchored on the root hung where the fly was born and was hidden by the nearest wall.
+    Transform anchorBody;
+    // How far above Anchor Body's origin the label floats, in world units. Measured once from the
     // body's collider: the fly and the old man are wildly different sizes.
     float labelHeight;
     // How tall one line of the label is at scale 1, measured from the font rather than assumed, so
@@ -135,7 +140,7 @@ public class PlayerNameTag : NetworkBehaviour
             return;
         }
 
-        Vector3 anchor = transform.position + Vector3.up * labelHeight;
+        Vector3 anchor = anchorBody.position + Vector3.up * labelHeight;
         Vector3 toCamera = view.transform.position - anchor;
         float distance = toCamera.magnitude;
         // Zero distance would hand a zero-length direction to LookRotation; the camera is never
@@ -258,6 +263,7 @@ public class PlayerNameTag : NetworkBehaviour
     // the old man also carries a disabled CapsuleCollider, whose bounds are not where he stands.
     // Falls back to the body's scale when there is no collider at all, so the label still appears
     // somewhere sensible instead of inside the model.
+    // Also picks Anchor Body, since the height is only meaningful relative to the object it is measured from.
     float MeasureLabelHeight()
     {
         Collider body = GetComponentInChildren<CharacterController>();
@@ -265,12 +271,15 @@ public class PlayerNameTag : NetworkBehaviour
         {
             body = GetComponentInChildren<Collider>();
         }
-        float fallback = Mathf.Abs(transform.lossyScale.y) * (1f + heightAboveBody);
+        // Fails open to the root, which is where the label was anchored before: right for any body
+        // whose root is what moves, and no worse than before for one whose root does not.
+        anchorBody = body != null ? body.transform : transform;
+        float fallback = Mathf.Abs(anchorBody.lossyScale.y) * (1f + heightAboveBody);
         if (body == null)
         {
             return fallback;
         }
-        float top = body.bounds.max.y - transform.position.y;
+        float top = body.bounds.max.y - anchorBody.position.y;
         float height = top + body.bounds.size.y * heightAboveBody;
         // A collider that has not been placed yet reports empty bounds at the origin, which puts the
         // label underneath a body standing anywhere above y = 0 - and the fly's spawn points are all

@@ -38,7 +38,10 @@ public partial class KitchenMapBuilder
     // z runs from -HalfDepth (south) to +HalfDepth (north) in both rooms. The kitchen spans x from
     // KitchenWest to PartitionX, then comes the partition wall, then the living room up to LivingEast.
     const float HalfDepth = 2.5f;
-    const float RoomHeight = 2.6f;
+    // 4 m, not a real kitchen's 2.6 m: the old man's slap reaches about 2.72 m looking up, so under
+    // a 2.6 m ceiling a fly had nowhere out of his reach. Tools > Stylized Kitchen > Raise Ceiling To
+    // Room Height applies a change here to a built scene without rebuilding it.
+    internal const float RoomHeight = 4.0f;
     const float WallThickness = 0.1f;
     const float KitchenWest = -3f;
     const float PartitionX = 3f;
@@ -61,7 +64,7 @@ public partial class KitchenMapBuilder
     const float PictureWallGap = 0.011f;
     static readonly Color WarmLight = new Color(1f, 0.85f, 0.65f);
     // High and from the south-south-east: the kitchen counters, the dining table and the TV screen all
-    // face the sun, and the 2.6 m walls cast shadows only about 1.5 m long.
+    // face the sun, and the 4 m walls cast shadows only about 2.3 m long.
     static readonly Vector3 SunAngles = new Vector3(60f, -30f, 0f);
     // The toon shader adds ambient on top of the sun, so it is kept low to avoid washing out the bands.
     static readonly Color AmbientSky = new Color(0.46f, 0.44f, 0.41f);

@@ -2,7 +2,8 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 
-// First-person control of the old person: WASD walks, the mouse looks, Space jumps, Shift runs. The
+// First-person control of the old person: WASD walks, the mouse looks, Space jumps, Shift runs, holding
+// C or Ctrl crouches (OldPersonCrouchPose bends the body). The
 // mouse turns the whole body left/right and tilts only the camera up/down.
 // Goes on the old_person root (the object with the Animator) with a CharacterController, and the
 // prefab's CapsuleCollider there disabled. The camera goes in as a child at eye height.
@@ -17,6 +18,9 @@ public class OldPersonFPSController : MonoBehaviour
     const string LookActionName = "Player/Look";
     const string JumpActionName = "Player/Jump";
     const string SprintActionName = "Player/Sprint";
+    // C, Left Ctrl and the gamepad's East button. The fly reads the same action to fly down; each player
+    // only ever drives their own body, so the two never compete for it.
+    const string CrouchActionName = "Player/Crouch";
     // Small constant push into the ground while standing, so isGrounded stays true every frame
     // instead of flickering, and walking off an edge starts falling immediately. In metres per
     // second, like every other speed here.
@@ -59,6 +63,14 @@ public class OldPersonFPSController : MonoBehaviour
     [Tooltip("How far the camera swings with the head around the neck when looking up/down. 0 = camera stays put, 1 = moves like the real head, above 1 = exaggerated.")]
     [SerializeField, Range(0f, 2f)] float cameraFollowsHead = 1f;
 
+    [Header("Crouch (hold)")]
+    [Tooltip("Share of walking speed kept while fully crouched. 0.5 = half speed. Sprint and jump are off while crouched.")]
+    [SerializeField, Range(0.1f, 1f)] float crouchSpeedShare = 0.5f;
+    [Tooltip("Seconds to go all the way down, and the same to stand back up.")]
+    [SerializeField, Min(0.01f)] float crouchTime = 0.2f;
+    [Tooltip("Bends the body and reports how far the hips dropped, so the camera drops with them. Found on this object if left empty; without it the view does not lower.")]
+    [SerializeField] OldPersonCrouchPose crouchPose;
+
     [Header("First-person body")]
     [Tooltip("Layer for the headless body copy. Tick it in View Camera's Culling Mask and untick it in every other camera's.")]
     [SerializeField] string firstPersonBodyLayer = "FirstPersonBody";
@@ -72,6 +84,9 @@ public class OldPersonFPSController : MonoBehaviour
     InputAction lookAction;
     InputAction jumpAction;
     InputAction sprintAction;
+    InputAction crouchAction;
+    // 0 standing, 1 fully crouched; eased between the two over Crouch Time rather than snapped.
+    float crouchAmount;
     float verticalVelocity;
     float pitch;
     // In this object's local space: where the camera sits when looking straight ahead (as placed in
@@ -90,6 +105,9 @@ public class OldPersonFPSController : MonoBehaviour
         lookAction = InputSystem.actions.FindAction(LookActionName, throwIfNotFound: true);
         jumpAction = InputSystem.actions.FindAction(JumpActionName, throwIfNotFound: true);
         sprintAction = InputSystem.actions.FindAction(SprintActionName, throwIfNotFound: true);
+        crouchAction = InputSystem.actions.FindAction(CrouchActionName, throwIfNotFound: true);
+        if (crouchPose == null)
+            crouchPose = GetComponent<OldPersonCrouchPose>();
 
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
@@ -132,6 +150,7 @@ public class OldPersonFPSController : MonoBehaviour
         lookAction.Enable();
         jumpAction.Enable();
         sprintAction.Enable();
+        crouchAction.Enable();
         Cursor.lockState = CursorLockMode.Locked;
     }
 
@@ -142,11 +161,28 @@ public class OldPersonFPSController : MonoBehaviour
 
     void Update()
     {
+        UpdateCrouch();
         Look(lookAction.ReadValue<Vector2>());
         float horizontalSpeed = Move(moveAction.ReadValue<Vector2>());
         if (animator != null)
             animator.SetFloat(SpeedAnimParameter, horizontalSpeed);
     }
+
+    // Hold to crouch, let go to stand. Written to the Animator rather than kept here, because the
+    // prefab's NetworkAnimator already carries its parameters to the other players, and OldPersonCrouchPose
+    // on their copies reads it from there to bend the body they see.
+    void UpdateCrouch()
+    {
+        float target = crouchAction.IsPressed() ? 1f : 0f;
+        crouchAmount = Mathf.MoveTowards(crouchAmount, target, Time.deltaTime / crouchTime);
+        if (animator != null)
+            animator.SetFloat(OldPersonCrouchPose.CrouchAnimParameter, crouchAmount);
+    }
+
+    // How far below the standing eye the camera sits, in this object's local space. Taken from the
+    // body's actual hip drop (last frame's, which at 0.2 s down is not visible), so the view lowers as
+    // far as the body does whatever the bend angles are tuned to.
+    float CrouchEyeDrop() => crouchPose != null && crouchPose.isActiveAndEnabled ? crouchPose.HipDrop / bodyScale : 0f;
 
     // LateUpdate because the Animator poses the bones between Update and LateUpdate; tilting them in
     // Update would be overwritten by the Idle/Walk clip the same frame.
@@ -243,14 +279,17 @@ public class OldPersonFPSController : MonoBehaviour
         // Same clamp as the head bones, so the camera stops moving where the head stops tilting and
         // the eyes stay inside the (hidden) head.
         float headPitch = Mathf.Clamp(pitch, -maxHeadPitch, maxHeadPitch) * cameraFollowsHead;
-        viewCamera.transform.localPosition = neckPivot + Quaternion.Euler(headPitch, 0f, 0f) * (eyePosition - neckPivot);
+        viewCamera.transform.localPosition = neckPivot + Quaternion.Euler(headPitch, 0f, 0f) * (eyePosition - neckPivot)
+                                             + Vector3.down * CrouchEyeDrop();
     }
 
     // Walks along the ground relative to where the body faces, with gravity and jumping.
     // Returns the horizontal speed actually moved, for the walk animation.
     float Move(Vector2 move)
     {
-        float speed = (sprintAction.IsPressed() ? sprintSpeed : walkSpeed) * bodyScale;
+        // No sprinting on bent knees: Shift only counts while he is standing all the way up.
+        bool isSprinting = sprintAction.IsPressed() && crouchAmount <= 0f;
+        float speed = (isSprinting ? sprintSpeed : walkSpeed) * Mathf.Lerp(1f, crouchSpeedShare, crouchAmount) * bodyScale;
         // ClampMagnitude: diagonal keys would otherwise walk ~1.4x faster than straight ahead.
         Vector3 horizontal = transform.TransformDirection(new Vector3(move.x, 0f, move.y));
         horizontal = Vector3.ClampMagnitude(horizontal, 1f) * speed;
@@ -273,7 +312,8 @@ public class OldPersonFPSController : MonoBehaviour
             return;
         }
         // Jump speed for the chosen height: v = sqrt(2 * h * g), in metres, then put into his scale.
-        verticalVelocity = jumpAction.WasPressedThisFrame()
+        // No jumping out of a crouch, so the bend never has to be undone mid-air.
+        verticalVelocity = jumpAction.WasPressedThisFrame() && crouchAmount <= 0f
             ? Mathf.Sqrt(2f * jumpHeight * -gravity) * bodyScale
             : -GroundStickSpeed * bodyScale;
     }

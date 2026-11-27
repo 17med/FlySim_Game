@@ -42,6 +42,9 @@ public class FlyKnockbackNetwork : NetworkBehaviour
     readonly Collider[] nearby = new Collider[OverlapBufferSize];
     FlyController fly;
     CharacterController flyBody;
+    // Either may be missing; ReportThrowHit says what happens then.
+    FlyHealthNetwork networkHealth;
+    FlyHealth localHealth;
     float objectHitReadyTime;
 
     void Awake()
@@ -49,6 +52,8 @@ public class FlyKnockbackNetwork : NetworkBehaviour
         fly = GetComponentInChildren<FlyController>(true);
         if (fly != null)
             flyBody = fly.GetComponent<CharacterController>();
+        networkHealth = GetComponent<FlyHealthNetwork>();
+        localHealth = GetComponentInChildren<FlyHealth>(true);
         // Fails open: the fly still plays normally; it just cannot be knocked.
         if (fly == null || flyBody == null)
             Debug.LogWarning($"{nameof(FlyKnockbackNetwork)}: no {nameof(FlyController)} with a CharacterController under {name}; this fly cannot be knocked.", this);
@@ -97,23 +102,48 @@ public class FlyKnockbackNetwork : NetworkBehaviour
     {
         if (flyBody == null || Time.time < objectHitReadyTime)
             return;
+        // FlyHealth switches the CharacterController off on death, which collapses its bounds to the
+        // world origin: the search would then knock and bleed a corpse for objects lying over there.
+        if (localHealth != null && localHealth.IsDead)
+            return;
         Vector3 flyCenter = flyBody.bounds.center;
         int count = Physics.OverlapSphereNonAlloc(flyCenter, searchRadius, nearby, ~0, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < count; i++)
         {
-            if (TryGetHitVelocity(nearby[i], flyCenter, out Vector3 objectVelocity))
+            if (TryGetHitVelocity(nearby[i], flyCenter, out Vector3 objectVelocity, out Rigidbody hitBody))
             {
                 Knock(Vector3.ClampMagnitude(objectVelocity * objectKnockTransfer, maxObjectKnockSpeed));
+                ReportThrowHit(hitBody);
                 return;
             }
         }
     }
 
+    // A thrown object costs the fly one life on top of the knock, exactly like a slap
+    // (OldPersonSlap.ReportFlyHit). Anything else - a cup rolling off the table - only knocks.
+    // This runs where the object is simulated, which is the thrower's machine, so online the hit goes
+    // to the server through FlyHealthNetwork, which also handles offline; FlyHealth alone is the
+    // fallback for a fly with no network component. Fails open with neither: the fly is still knocked,
+    // as before it had lives.
+    void ReportThrowHit(Rigidbody hitBody)
+    {
+        Pickable pickable = hitBody.GetComponent<Pickable>();
+        if (pickable == null || !pickable.TryConsumeThrowHit())
+            return;
+        if (networkHealth != null)
+        {
+            networkHealth.ReportHit();
+            return;
+        }
+        if (localHealth != null)
+            localHealth.TakeHit();
+    }
+
     // True when the collider belongs to a moving object whose next physics step passes through the fly.
-    bool TryGetHitVelocity(Collider candidate, Vector3 flyCenter, out Vector3 velocity)
+    bool TryGetHitVelocity(Collider candidate, Vector3 flyCenter, out Vector3 velocity, out Rigidbody body)
     {
         velocity = Vector3.zero;
-        Rigidbody body = candidate.attachedRigidbody;
+        body = candidate.attachedRigidbody;
         if (body == null || body.isKinematic || body.transform.IsChildOf(transform))
             return false;
         velocity = body.linearVelocity;

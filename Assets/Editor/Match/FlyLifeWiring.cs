@@ -40,7 +40,7 @@ public static class FlyLifeWiring
 
     // Where a fly can appear in the single player kitchen, in the layout metres KitchenMapBuilder
     // builds the house in, with the compass yaw it faces (0 = north). All of them are between 1.4 m and
-    // 1.7 m up: above the counters, the tables and the bookshelf, below the 2.6 m ceiling and the wall
+    // 1.7 m up: above the counters, the tables and the bookshelf, below the 4 m ceiling and the wall
     // cabinets' 2.15 m top, and clear of the pendant and ceiling lamps. Multiplied by WorldScale on the
     // way into the scene, which is the whole reason they are written as metres.
     static readonly (Vector3 Spot, float Facing)[] SinglePlayerSpawns =

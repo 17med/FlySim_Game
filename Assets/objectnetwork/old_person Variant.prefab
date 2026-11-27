@@ -1279,7 +1279,7 @@ MonoBehaviour:
   m_AntialiasingQuality: 2
   m_StopNaN: 0
   m_Dithering: 0
-  m_ClearDepth: 1
+  m_ClearDepth: 0
   m_AllowXRRendering: 1
   m_AllowHDROutput: 1
   m_UseScreenCoordOverride: 0
@@ -2132,6 +2132,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 4398247409588550342, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       insertIndex: -1
       addedObject: {fileID: 6627759590495191885}
+    - targetCorrespondingSourceObject: {fileID: 4398247409588550342, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4582095826740076360}
     - targetCorrespondingSourceObject: {fileID: 3653998066442634814, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}
       insertIndex: -1
       addedObject: {fileID: 5331846117834799652}
@@ -2192,7 +2195,7 @@ MonoBehaviour:
   animator: {fileID: 1847940693147353895}
   walkSpeed: 0.83
   sprintSpeed: 1.67
-  jumpHeight: 0.6
+  jumpHeight: 0
   gravity: -9.81
   mouseSensitivity: 0.1
   minPitch: -80
@@ -2200,6 +2203,9 @@ MonoBehaviour:
   maxHeadPitch: 60
   neckShare: 0.4
   cameraFollowsHead: 1
+  crouchSpeedShare: 0.5
+  crouchTime: 0.2
+  crouchPose: {fileID: 0}
   firstPersonBodyLayer: FirstPersonBody
 --- !u!114 &1324676216371310669
 MonoBehaviour:
@@ -2285,6 +2291,7 @@ MonoBehaviour:
   dropDistance: 1
   throwSpeed: 30
   ownCollisionDelay: 0.3
+  throwHitWindow: 2
   pickUpSound: {fileID: 8300000, guid: 7571396f77acf2f4aa7b89dc55c3195d, type: 3}
   dropSound: {fileID: 8300000, guid: c1dd73f3436643a19b98c766f8bfdc77, type: 3}
   throwSound: {fileID: 8300000, guid: f45ce2c6fbad50cc982e29ee4825b6be, type: 3}
@@ -2390,6 +2397,10 @@ MonoBehaviour:
     ParameterEntries:
     - name: Speed
       NameHash: -823668238
+      Synchronize: 1
+      ParameterType: 1
+    - name: Crouch
+      NameHash: -2015693266
       Synchronize: 1
       ParameterType: 1
   AnimatorParametersExpanded: 0
@@ -2631,6 +2642,22 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   stompShake: 0.35
+--- !u!114 &4582095826740076360
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4904077209020662759}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09290d154f4e1597a8ade04159b63022, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::OldPersonCrouchPose
+  animator: {fileID: 1847940693147353895}
+  thighSwing: 70
+  kneeBend: 110
+  spineLean: 25
 --- !u!1 &5454674350454980383 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3653998066442634814, guid: 9ffa396d4710b3e30b146caaf3470de7, type: 3}

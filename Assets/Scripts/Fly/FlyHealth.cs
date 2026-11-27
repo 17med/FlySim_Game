@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-// How much of a beating one fly takes, and what happens after the last one: two slaps from the old
-// man (or one boot on a fly that is standing still) and it is dead, then ten seconds later it is back
+// How much of a beating one fly takes, and what happens after the last one: three hits from the old
+// man - slaps or things he throws - (or one boot on a fly that is standing still) and it is dead, then ten seconds later it is back
 // in the kitchen at one of the spawn points the scene has tagged.
 // Goes next to FlyController on the fly's body. Death is not the end of the player's match - that is
 // the whole point of the respawn - so nothing here destroys or despawns anything: the fly is only
@@ -18,8 +18,8 @@ public class FlyHealth : MonoBehaviour
     // Respawn Tag below, and what Tools > Match > Wire Fly Lives tags the spawn points with.
     public const string DefaultRespawnTag = "FlySpawn";
 
-    [Tooltip("How many hits from the old man kill the fly. Two, so a single lucky swing is not the end of a player's match but a human who connects twice is rewarded.")]
-    [SerializeField, Min(1)] int hitsToKill = 2;
+    [Tooltip("How many hits from the old man kill the fly - slaps and thrown objects alike. Three, because the slap reaches far and throws count too: at two the fly died before the player could react.")]
+    [SerializeField, Min(1)] int hitsToKill = 3;
 
     [Tooltip("Seconds a dead fly waits before it comes back, in the server's time. Long enough that dying costs the flies real eating time, short enough that the player is not left watching an empty kitchen.")]
     [SerializeField, Min(0f)] float respawnSeconds = 10f;

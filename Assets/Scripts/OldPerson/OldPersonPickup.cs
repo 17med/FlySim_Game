@@ -49,6 +49,8 @@ public class OldPersonPickup : MonoBehaviour
     [SerializeField, Min(0f)] float throwSpeed = 8f;
     [Tooltip("Seconds after letting go before the object can bump into the old person again, so it does not hit him on the way out.")]
     [SerializeField, Min(0f)] float ownCollisionDelay = 0.3f;
+    [Tooltip("Seconds after a throw during which the object costs the fly a life if it hits it, bounces off walls included. One hit per throw; an object that is put down never counts.")]
+    [SerializeField, Min(0f)] float throwHitWindow = 2f;
 
     // Only heard by this player: pick up, drop and throw are not sent to the other players.
     [Header("Sounds (optional)")]
@@ -306,6 +308,11 @@ public class OldPersonPickup : MonoBehaviour
     {
         // Settled first, so a pending restore cannot switch collisions back on while this one is held.
         RestoreOwnCollisions();
+        // Caught again before its throw window ran out: swinging it into the fly while carrying it
+        // must not spend the throw's hit.
+        Pickable pickable = body.GetComponent<Pickable>();
+        if (pickable != null)
+            pickable.ClearThrown();
         isHolding = true;
         heldBody = body;
         heldColliders = body.GetComponentsInChildren<Collider>();
@@ -356,6 +363,18 @@ public class OldPersonPickup : MonoBehaviour
         Release();
         throwFrame = Time.frameCount;
         body.linearVelocity = launchVelocity;
+        MarkThrown(body);
+    }
+
+    // Only here, never in Release: an object put down with E must not cost the fly a life.
+    void MarkThrown(Rigidbody body)
+    {
+        // Scene props carry only the "Pickable" tag, so the component that remembers the throw is
+        // added on the first throw. Pickable's RequireComponent is already met by this Rigidbody.
+        Pickable pickable = body.GetComponent<Pickable>();
+        if (pickable == null)
+            pickable = body.gameObject.AddComponent<Pickable>();
+        pickable.MarkThrown(throwHitWindow);
     }
 
     Vector3 ThrowVelocity()
