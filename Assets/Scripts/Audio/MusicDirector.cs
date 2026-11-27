@@ -1,10 +1,16 @@
+using System.Collections.Generic;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 // The kitchen's music, which follows the raid rather than just playing under it.
-// Three tracks: Food Raid is the match, Fly Chase cuts in while the old man is on top of a fly, and
-// Final Minute Panic takes over for the last minute. They cross-fade, so the kitchen never goes quiet
-// between them and a chase that lasts two seconds does not restart the music.
+// Three tracks: Food Raid is the match, Fly Chase cuts in while the old man is close to a fly, and
+// Final Minute Panic takes over for the last minute - or earlier, as soon as a dish is nearly eaten,
+// since emptying one dish wins. They cross-fade, so the kitchen never goes quiet between them, and
+// each track carries on from where it was left, so coming back from a chase does not replay Food
+// Raid's opening. In the last seconds the panic speeds up, like a countdown.
+// The chase is this player's own: on a fly's screen it is their fly the old man is close to, on his
+// screen any fly. One fly near him used to switch every player's music, even flies in another room.
 // The menu keeps its own theme (The Swarm Anthem on Stage_Root, wired by Tools > Main Menu > Wire
 // Settings), so this only ever runs in a kitchen.
 //
@@ -18,9 +24,15 @@ public class MusicDirector : MonoBehaviour
     const string ChaseTrack = "Fly Chase";
     const string PanicTrack = "Final Minute Panic";
 
-    // How close the old man has to be to a fly for the chase to be on, in units. The kitchen is built
-    // at about 30 units to the metre, so this is a little over an arm's length.
-    const float ChaseDistance = 45f;
+    // How close a fly has to be to the middle of the old man's body for the chase to be on, in his own
+    // body heights (about 3.5 m for a 1.75 m man). In his height rather than in units, so it follows
+    // the house's scale: it used to be 45 units, written for 30 units to the metre and measured from his
+    // feet, and at the house's 45 units to the metre a fly at his face was never close enough.
+    const float ChaseRangeInBodyHeights = 2f;
+    // How long before the end the final minute's music starts speeding up, and how fast it ends up.
+    // Pitch also raises the key a little, which is why it stops at 8 percent. 1 turns the speed-up off.
+    const float SprintSeconds = 15f;
+    const float SprintPitch = 1.08f;
     // Once a chase starts it holds for this long after he backs off, so the music does not flicker
     // between two tracks while he walks past.
     const float ChaseHold = 4f;
@@ -48,6 +60,10 @@ public class MusicDirector : MonoBehaviour
     float chaseUntil;
     float chaseCheckAt;
     Transform guard;
+    CharacterController guardBody;
+    // Where each track was when it was last heard, so a track coming back carries on rather than
+    // starting again.
+    readonly Dictionary<AudioClip, float> resumeAt = new Dictionary<AudioClip, float>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     static void Install()
@@ -94,10 +110,12 @@ public class MusicDirector : MonoBehaviour
             fade = Mathf.Min(1f, fade + Time.unscaledDeltaTime / fadeSeconds);
             if (fade >= 1f && back.isPlaying)
             {
+                Remember(back);
                 back.Stop();
             }
         }
         ApplyVolume();
+        ApplyPitch();
     }
 
     // Which track the kitchen wants right now.
@@ -114,15 +132,17 @@ public class MusicDirector : MonoBehaviour
         {
             return Cue.None;
         }
-        if (match.IsFinalMinute)
+        // A nearly eaten dish is as much a last stand as the last minute: one more dish emptied ends
+        // the match. Food never comes back, so once this starts it stays.
+        if (match.IsFinalMinute || match.FoodLeft < MatchDirector.FoodDangerShare)
         {
             return Cue.Panic;
         }
         return IsChaseOn() ? Cue.Chase : Cue.Raid;
     }
 
-    // True while the old man is within reach of any fly. Held for a few seconds after he backs off,
-    // so one step past a fly does not swap the music twice.
+    // True while the old man is close to this player's fly, or to any fly when this player is the old
+    // man. Held for a few seconds after he backs off, so one step past a fly does not swap the music twice.
     bool IsChaseOn()
     {
         if (Time.time < chaseCheckAt)
@@ -132,18 +152,60 @@ public class MusicDirector : MonoBehaviour
         chaseCheckAt = Time.time + ChaseCheckInterval;
 
         Transform keeper = Guard();
-        if (keeper != null)
+        if (keeper != null && IsAnyFlyClose(keeper))
         {
-            foreach (FlyController fly in FindObjectsByType<FlyController>(FindObjectsInactive.Exclude))
-            {
-                if (Vector3.Distance(keeper.position, fly.transform.position) <= ChaseDistance)
-                {
-                    chaseUntil = Time.time + ChaseHold;
-                    break;
-                }
-            }
+            chaseUntil = Time.time + ChaseHold;
         }
         return Time.time < chaseUntil;
+    }
+
+    // From the middle of his body, so a fly at his face counts as close and one at his feet does too.
+    bool IsAnyFlyClose(Transform keeper)
+    {
+        float height = guardBody != null ? guardBody.height * Mathf.Abs(keeper.lossyScale.y) : 0f;
+        // Fails open to no chase: without his body's height there is no telling what close means,
+        // and the match music playing on is better than a chase that never stops.
+        if (height <= 0f)
+        {
+            return false;
+        }
+        Vector3 middle = keeper.TransformPoint(guardBody.center);
+        float range = height * ChaseRangeInBodyHeights;
+        // The old man's own screen hears every fly; a fly's screen only its own.
+        bool isLocalHuman = IsThisMachinesPlayer(keeper.GetComponent<OldPersonFPSController>());
+        foreach (FlyController fly in FindObjectsByType<FlyController>(FindObjectsInactive.Exclude))
+        {
+            if (!isLocalHuman && !IsThisMachinesPlayer(fly))
+            {
+                continue;
+            }
+            FlyHealth health = fly.GetComponent<FlyHealth>();
+            if (health != null && health.IsDead)
+            {
+                continue;
+            }
+            if (Vector3.Distance(middle, fly.transform.position) <= range)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Online the body's owner is this player; in the single player Kitchen, where nothing is spawned,
+    // the one body whose controls are switched on is. The same test MinimapHud makes.
+    static bool IsThisMachinesPlayer(Behaviour controls)
+    {
+        if (controls == null)
+        {
+            return false;
+        }
+        NetworkObject body = controls.GetComponentInParent<NetworkObject>();
+        if (body != null && body.IsSpawned)
+        {
+            return body.IsOwner;
+        }
+        return controls.isActiveAndEnabled;
     }
 
     // The old man. Looked up again while there is none: in a room his body is spawned by the host a
@@ -156,6 +218,7 @@ public class MusicDirector : MonoBehaviour
         }
         OldPersonFPSController keeper = FindAnyObjectByType<OldPersonFPSController>(FindObjectsInactive.Exclude);
         guard = keeper != null ? keeper.transform : null;
+        guardBody = keeper != null ? keeper.GetComponent<CharacterController>() : null;
         return guard;
     }
 
@@ -169,8 +232,11 @@ public class MusicDirector : MonoBehaviour
         playing = cue;
 
         // The track going out becomes the back source and fades from there, so a change half way
-        // through a fade picks up from what is actually being heard rather than snapping.
+        // through a fade picks up from what is actually being heard rather than snapping. The source
+        // that was fading out before is cut off to play the new track, so its place is kept first.
+        Remember(back);
         (front, back) = (back, front);
+        front.pitch = 1f;
         fade = 0f;
 
         AudioClip clip = cue switch
@@ -189,6 +255,27 @@ public class MusicDirector : MonoBehaviour
         }
         front.clip = clip;
         front.Play();
+        // After Play: a compressed clip only takes a position once it is playing.
+        if (resumeAt.TryGetValue(clip, out float position) && position < clip.length)
+        {
+            front.time = position;
+        }
+    }
+
+    void Remember(AudioSource source)
+    {
+        if (source.clip != null && source.isPlaying)
+        {
+            resumeAt[source.clip] = source.time;
+        }
+    }
+
+    // The final minute's music speeds up over the last seconds; nothing else ever changes speed.
+    void ApplyPitch()
+    {
+        MatchDirector match = MatchDirector.Instance;
+        bool isSprint = playing == Cue.Panic && match != null && !match.IsOver && match.SecondsLeft < SprintSeconds;
+        front.pitch = isSprint ? Mathf.Lerp(SprintPitch, 1f, match.SecondsLeft / SprintSeconds) : 1f;
     }
 
     void ApplyVolume()

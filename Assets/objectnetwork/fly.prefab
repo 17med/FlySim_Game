@@ -3933,6 +3933,7 @@ GameObject:
   - component: {fileID: 5084734229767005869}
   - component: {fileID: 6632021358711766074}
   - component: {fileID: 1789988962023457963}
+  - component: {fileID: 5780349017862072879}
   m_Layer: 0
   m_Name: fly
   m_TagString: Untagged
@@ -3987,7 +3988,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 3363304577
+  GlobalObjectIdHash: 2864855562
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -4089,11 +4090,12 @@ MonoBehaviour:
   screenShare: 0.0725
   hideBeyond: 600
   hideBehindWalls: 1
+  fliesSeeFliesThroughWalls: 1
   wallLayers:
     serializedVersion: 2
     m_Bits: 4294967295
   textColor: {r: 1, g: 0.95, b: 0.75, a: 1}
-  outlineWidth: 0.2
+  outlineWidth: 0.214
 --- !u!114 &1789988962023457963
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4107,6 +4109,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FlyHealthNetwork
   ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &5780349017862072879
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2433297912782567719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6478277ea31b346c880684d8a6fcf5ed, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlyTeammateXRay
+  ShowTopMostFoldoutHeaderGroup: 1
+  xRayMaterial: {fileID: 2100000, guid: 1ddf1998d1d6327e986f247b6a811b33, type: 2}
 --- !u!1 &2573173314928979463
 GameObject:
   m_ObjectHideFlags: 0
@@ -14237,6 +14253,8 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 1308da6311dfcd10aafe0ec59b5e3399, type: 3}
   flyVolume: 1
   boostPitch: 1.3
+  fullVolumeRange: 27
+  silentRange: 225
 --- !u!114 &5256911397406625124
 MonoBehaviour:
   m_ObjectHideFlags: 0

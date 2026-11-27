@@ -18,7 +18,7 @@ public static partial class HouseBuildPipeline
     const string PantryDishName = "Couscous_Pantry";
     // Every dish eats at the same rate (see FoodDish's tooltip and CoffeeCupSetup.MugBiteRate). The
     // guard is measured flat in dish radii, and 6 is standing at the table, not across the room.
-    const float DishBiteRate = 1f;
+    const float DishBiteRate = 1.1f;
     const float DishBiteRangeScale = 1.3f;
     const float DishGuardRangeScale = 6f;
 

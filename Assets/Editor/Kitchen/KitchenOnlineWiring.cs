@@ -22,6 +22,9 @@ public static class KitchenOnlineWiring
     // fly prefix is a fly spawn, so adding "fly pawner _3" needs no change here.
     const string HumanSpawnName = "humanspaner";
     const string FlySpawnPrefix = "fly pawner";
+    // The flies' through-walls glow (FlyTeammateXRay): made from its shader the first time, next to it.
+    const string XRayShaderName = "FlySimulator/FlyTeammateXRay";
+    const string XRayMaterialPath = "Assets/Shaders/FlyTeammateXRay.mat";
 
     // Everything on a body that reads this machine's input or draws to its screen.
     // ScreenFade, SpinObject, SpitInterface and OldPersonSpitScreen are left out: they only animate the
@@ -57,7 +60,7 @@ public static class KitchenOnlineWiring
     // scene's spawner is touched.
     internal static bool WireScene(Scene scene)
     {
-        bool prefabsWired = WirePrefab(FlyPrefabPath, typeof(FlyController), typeof(FlySpitNetwork), typeof(FlyKnockbackNetwork), typeof(PlayerNameTag))
+        bool prefabsWired = WirePrefab(FlyPrefabPath, typeof(FlyController), typeof(FlySpitNetwork), typeof(FlyKnockbackNetwork), typeof(PlayerNameTag), typeof(FlyTeammateXRay))
                             && WirePrefab(HumanPrefabPath, typeof(OldPersonFPSController), typeof(OldPersonArmNetwork), typeof(OldPersonSpitNetwork), typeof(PlayerNameTag))
                             && RegisterPrefabs();
         if (!prefabsWired)
@@ -99,6 +102,10 @@ public static class KitchenOnlineWiring
                     root.AddComponent(actionsNetworkType);
                 }
             }
+            if (root.TryGetComponent(out FlyTeammateXRay xRay) && !AssignXRayMaterial(xRay))
+            {
+                return false;
+            }
 
             PrefabUtility.SaveAsPrefabAsset(root, path, out bool saved);
             if (!saved)
@@ -111,6 +118,27 @@ public static class KitchenOnlineWiring
         {
             PrefabUtility.UnloadPrefabContents(root);
         }
+    }
+
+    // Fails closed: a fly whose glow has no material would play on without it and nobody would know.
+    static bool AssignXRayMaterial(FlyTeammateXRay xRay)
+    {
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(XRayMaterialPath);
+        if (material == null)
+        {
+            Shader shader = Shader.Find(XRayShaderName);
+            if (shader == null)
+            {
+                Debug.LogError($"Wire Network Players: the shader {XRayShaderName} (Assets/Shaders/FlyTeammateXRay.shader) is missing or does not compile, so the flies' glow has no material.");
+                return false;
+            }
+            material = new Material(shader);
+            AssetDatabase.CreateAsset(material, XRayMaterialPath);
+        }
+        var fields = new SerializedObject(xRay);
+        fields.FindProperty("xRayMaterial").objectReferenceValue = material;
+        fields.ApplyModifiedPropertiesWithoutUndo();
+        return true;
     }
 
     static void WireTransform(NetworkTransform networkTransform, bool isChild)

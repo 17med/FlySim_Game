@@ -226,7 +226,8 @@ public class FlyEating : MonoBehaviour
         {
             return;
         }
-        float amount = dish.BiteRate * Time.deltaTime;
+        // This fly's share of the rate, which shrinks as more flies play (see MatchDirector.BiteShare).
+        float amount = dish.BiteRate * MatchDirector.BiteShare * Time.deltaTime;
         if (dishNetwork == null)
         {
             dish.Bite(amount);

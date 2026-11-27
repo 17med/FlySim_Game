@@ -21,10 +21,10 @@ public static class GameSettings
     const float DefaultVolume = 0.8f;
 
     // How long a raid lasts. Five minutes by default and at the shortest (cut from ten at the
-    // maintainer's request, 2026-11-21). It is tight on purpose: at FoodDish's bite rate of 0.6% a
-    // second, one fly eating without a break clears a full couscous in about 2 min 47 s, so a lone fly
-    // has to be on the plate more than half the match with the old man chasing it. If the flies can
-    // never win, raise FoodDish.biteRate rather than this. The host can make a match longer, never shorter.
+    // maintainer's request, 2026-11-21). The flies win by emptying any one dish, which takes them about
+    // 90 s alone and 45 s as four at a bite rate of 1.1 (see MatchDirector.BiteShare), so the old man
+    // has to keep them off the plates for the whole match. If the flies can never win, raise
+    // FoodDish.biteRate rather than this. The host can make a match longer, never shorter.
     public const int MinMatchMinutes = 5;
     public const int MaxMatchMinutes = 30;
     public const int DefaultMatchMinutes = 5;

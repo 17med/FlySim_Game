@@ -2,6 +2,7 @@ using TMPro;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 // The player's name on a label floating over their body, so the flyers can tell each other apart in
 // the kitchen and know which fly is whose.
@@ -16,6 +17,9 @@ using UnityEngine;
 // bodies are scaled (the old man 45x, the fly's body 2x) and a child would inherit that scale. It
 // holds a constant share of the screen however far away it is, turns to face the player, and is
 // hidden by walls, so a name can only be read while its owner can actually be seen.
+// Except between flies: a fly sees the other flies' names through walls and drawn on top of them,
+// as it sees their glow (FlyTeammateXRay) and their markers on the minimap, so the flies can work
+// together. The old man's view, and a fly looking at the old man, keep the wall check.
 public class PlayerNameTag : NetworkBehaviour
 {
     // Any size would do: the label's drawn height at scale 1 is measured once and divided out, so
@@ -27,6 +31,11 @@ public class PlayerNameTag : NetworkBehaviour
     // Shown until the owner's name arrives, a frame or two after the body spawns. Better than an
     // empty label that pops into existence once the name lands.
     const string PendingName = "…";
+    // The text shader's depth test (TMP's SDF shaders read ZTest from this), set on the label's own
+    // material copy so that only this label is drawn on top of walls.
+    const string DepthTestProperty = "unity_GUIZTestMode";
+    // How long a label may wait for a camera and a font height before it says so in the log.
+    const float SlowStartWarningSeconds = 5f;
     // Room for the colliders a look at a body can pass through: the house shell, a counter and the
     // props on it. Only whether anything is in the way matters, so overflowing is harmless.
     const int WallBufferSize = 16;
@@ -39,6 +48,8 @@ public class PlayerNameTag : NetworkBehaviour
     [SerializeField, Min(0f)] float hideBeyond = 600f;
     [Tooltip("Hide the label when something solid stands between the player and the body, so names cannot be read through walls.")]
     [SerializeField] bool hideBehindWalls = true;
+    [Tooltip("A fly sees the other flies' names through walls, drawn on top of them, as it sees them on the minimap. Names the old man sees, and his own name, keep the wall check.")]
+    [SerializeField] bool fliesSeeFliesThroughWalls = true;
     [Tooltip("What counts as a wall for the check above.")]
     [SerializeField] LayerMask wallLayers = ~0;
     [SerializeField] Color textColor = new Color(1f, 0.95f, 0.75f, 1f);
@@ -69,6 +80,15 @@ public class PlayerNameTag : NetworkBehaviour
     // TryMeasureUnitHeight.
     float labelUnitHeight;
     Camera viewCamera;
+    // Whether this body is a fly, and whether the camera last asked about is a fly's, which together
+    // decide whether this name skips the wall check. Both are fixed for a body's and a camera's life.
+    bool isFlyBody;
+    Camera classifiedCamera;
+    bool isFlyView;
+    // Null until the depth test is first set, so the first frame always sets it.
+    bool? isDrawnOnTop;
+    float spawnedAt;
+    bool hasWarnedSlowStart;
 
     public override void OnNetworkSpawn()
     {
@@ -80,6 +100,8 @@ public class PlayerNameTag : NetworkBehaviour
         }
 
         labelHeight = MeasureLabelHeight();
+        isFlyBody = GetComponentInChildren<FlyController>(true) != null;
+        spawnedAt = Time.unscaledTime;
         BuildLabel();
         playerName.OnValueChanged += OnNameChanged;
         ShowName(playerName.Value);
@@ -134,18 +156,23 @@ public class PlayerNameTag : NetworkBehaviour
         {
             return;
         }
-        if (!TryGetViewCamera(out Camera view) || !TryMeasureUnitHeight())
+        bool hasCamera = TryGetViewCamera(out Camera view);
+        if (!hasCamera || !TryMeasureUnitHeight())
         {
+            WarnIfSlowToStart(hasCamera);
             labelTransform.gameObject.SetActive(false);
             return;
         }
 
+        bool isSeenThroughWalls = fliesSeeFliesThroughWalls && isFlyBody && IsFlyView(view);
+        SetDrawnOnTop(isSeenThroughWalls);
         Vector3 anchor = anchorBody.position + Vector3.up * labelHeight;
         Vector3 toCamera = view.transform.position - anchor;
         float distance = toCamera.magnitude;
         // Zero distance would hand a zero-length direction to LookRotation; the camera is never
         // inside another player's head, but a body spawning on top of one for a frame is possible.
-        bool isVisible = distance > 0f && distance <= hideBeyond && !IsBlocked(view.transform, anchor, distance);
+        bool isHidden = !isSeenThroughWalls && IsBlocked(view.transform, anchor, distance);
+        bool isVisible = distance > 0f && distance <= hideBeyond && !isHidden;
         labelTransform.gameObject.SetActive(isVisible);
         if (!isVisible)
         {
@@ -157,6 +184,44 @@ public class PlayerNameTag : NetworkBehaviour
         // the screen turns towards the player instead of staying edge-on.
         labelTransform.rotation = Quaternion.LookRotation(-toCamera / distance, view.transform.up);
         labelTransform.localScale = Vector3.one * (WorldHeightAt(view, distance) / labelUnitHeight);
+    }
+
+    // A fly's camera sits under the fly's root, next to its FlyController; the old man's does not.
+    // Asked once per camera, since what a camera belongs to never changes.
+    bool IsFlyView(Camera view)
+    {
+        if (view != classifiedCamera)
+        {
+            classifiedCamera = view;
+            isFlyView = view.transform.root.GetComponentInChildren<FlyController>(true) != null;
+        }
+        return isFlyView;
+    }
+
+    // Always passes the depth test when drawn on top, so walls cannot cover the name; otherwise the
+    // usual test, so the scenery in front of it does.
+    void SetDrawnOnTop(bool isOnTop)
+    {
+        if (isDrawnOnTop == isOnTop)
+        {
+            return;
+        }
+        isDrawnOnTop = isOnTop;
+        CompareFunction depthTest = isOnTop ? CompareFunction.Always : CompareFunction.LessEqual;
+        label.fontMaterial.SetFloat(DepthTestProperty, (float)depthTest);
+    }
+
+    // A label still waiting after a few seconds will never be seen, and nothing else would say so.
+    // Logged once per label, naming the step it is stuck on and not the player's name.
+    void WarnIfSlowToStart(bool hasCamera)
+    {
+        if (hasWarnedSlowStart || Time.unscaledTime - spawnedAt < SlowStartWarningSeconds)
+        {
+            return;
+        }
+        hasWarnedSlowStart = true;
+        string stuckOn = hasCamera ? "the font has not reported a line height" : "no enabled camera was found to face";
+        Debug.LogWarning($"{nameof(PlayerNameTag)}: the name over {name} is still not shown after {SlowStartWarningSeconds} s: {stuckOn}.", this);
     }
 
     // How tall one line of this label is at scale 1. False while the answer is not available yet,

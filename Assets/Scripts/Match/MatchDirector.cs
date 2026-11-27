@@ -5,8 +5,12 @@ using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 // The game the kitchen is playing, and the only thing that decides who won it.
-// The flies are after the food and the old man is defending it: clear every dish before the clock
-// runs out and the flies win, keep so much as a mouthful on a plate until it does and the human wins.
+// The flies are after the food and the old man is defending it: empty any one dish before the clock
+// runs out and the flies win; keep food on every plate until it does and the human wins.
+// Any one dish, not all of them: the old man used to win by standing over one dish for the whole
+// match, since a guarded dish can never be eaten. He cannot stand at two, so now he has to keep moving.
+// How fast the flies eat also depends on how many there are (BiteShare), so a match lasts about as
+// long with one fly as with four.
 //
 // The length comes from the host's settings (five minutes at the shortest), handed over by the lobby.
 // It installs itself when a kitchen scene loads, the way PauseMenu does, so a scene played straight
@@ -22,6 +26,11 @@ public class MatchDirector : MonoBehaviour
     const float ResultSeconds = 9f;
     // How often the kitchen is swept for dishes while there are none to be found.
     const float DishSearchInterval = 1f;
+    // Below this much food on the emptiest plate the match is in danger: the old man's HUD warns him
+    // and the music turns to the final minute's, since one more emptied dish ends it.
+    public const float FoodDangerShare = 0.35f;
+    // How often the flies in the match are counted again: players join and leave during a match.
+    const float FlyCountInterval = 1f;
 
     public enum Phase { Running, FliesWon, HumanWon }
 
@@ -41,8 +50,18 @@ public class MatchDirector : MonoBehaviour
     // Seconds still to play. Zero once the clock has run out.
     public float SecondsLeft { get; private set; }
 
-    // How much of the kitchen's food is still on its plates, 0 to 1. What the HUD's bar shows.
+    // How much food is left on the emptiest plate, 0 to 1: how close the flies are to winning, since
+    // emptying any one dish wins. What the HUD's bar shows.
     public float FoodLeft { get; private set; } = 1f;
+
+    // The share of a dish's Bite Rate each fly eats: 1 / sqrt(flies in the match). Together the flies
+    // eat sqrt(flies) times as fast as one alone, so a bigger team is still quicker - working together
+    // pays - but four flies clear a dish in half the time of one, not a quarter, which leaves the old
+    // man time to cross the house. With a Bite Rate of 1.1, one unguarded dish takes the flies about
+    // 90 s alone, 64 s as two, 52 s as three and 45 s as four.
+    // Dead flies waiting to respawn still count: if they did not, killing a fly would make the others
+    // eat faster, and the old man would be punished for doing well. Only a player leaving lowers it.
+    public static float BiteShare => Instance != null ? Instance.biteShare : 1f;
 
     public bool IsFinalMinute => !IsOver && SecondsLeft <= FinalMinuteSeconds;
 
@@ -59,6 +78,8 @@ public class MatchDirector : MonoBehaviour
     // The clock this machine counts down on its own. In a room MatchNetwork's is used instead, so the
     // players do not drift apart over a whole match; this is the fallback for a scene played on its own.
     float localSecondsLeft;
+    float biteShare = 1f;
+    float flyCountAt;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     static void Install()
@@ -132,8 +153,22 @@ public class MatchDirector : MonoBehaviour
         }
 
         Tick();
-        FoodLeft = MeasureFood(out bool allEmpty);
-        Judge(allEmpty);
+        CountFlies();
+        FoodLeft = MeasureFood(out bool anyEmpty);
+        Judge(anyEmpty);
+    }
+
+    // Every fly body in the kitchen, alive or waiting to respawn: a dead fly's body stays in the scene
+    // with its FlyHealth, only hidden. At least one, so a kitchen with no fly yet keeps the full rate.
+    void CountFlies()
+    {
+        if (Time.unscaledTime < flyCountAt)
+        {
+            return;
+        }
+        flyCountAt = Time.unscaledTime + FlyCountInterval;
+        int flies = FindObjectsByType<FlyHealth>(FindObjectsInactive.Exclude).Length;
+        biteShare = 1f / Mathf.Sqrt(Mathf.Max(1, flies));
     }
 
     // How long is left to play. The room's clock when there is one, so everybody's last minute is the
@@ -144,31 +179,26 @@ public class MatchDirector : MonoBehaviour
         SecondsLeft = network != null ? network.SecondsLeft : localSecondsLeft;
     }
 
-    // The share of the kitchen's food still on its plates. A kitchen with no dish at all counts as
-    // full, so a scene that has not been wired yet plays out the clock instead of ending at once.
-    float MeasureFood(out bool allEmpty)
+    // The food left on the emptiest plate. A kitchen with no dish at all counts as full, so a scene
+    // that has not been wired yet plays out the clock instead of ending at once.
+    float MeasureFood(out bool anyEmpty)
     {
         CollectDishes();
-        if (dishes.Count == 0)
-        {
-            allEmpty = false;
-            return 1f;
-        }
-
-        float total = 0f;
-        allEmpty = true;
+        anyEmpty = false;
+        float lowest = 1f;
         foreach (FoodDish dish in dishes)
         {
-            total += dish.Fill;
-            if (!dish.IsEmpty)
+            if (dish == null)
             {
-                allEmpty = false;
+                continue;
             }
+            lowest = Mathf.Min(lowest, dish.Fill);
+            anyEmpty |= dish.IsEmpty;
         }
-        return total / dishes.Count;
+        return lowest;
     }
 
-    void Judge(bool allEmpty)
+    void Judge(bool anyEmpty)
     {
         // In a room only the host judges, and tells everyone: two machines that disagreed about who
         // won would each show their own player a different ending.
@@ -181,7 +211,7 @@ public class MatchDirector : MonoBehaviour
             return;
         }
 
-        Phase verdict = allEmpty ? Phase.FliesWon : SecondsLeft <= 0f ? Phase.HumanWon : Phase.Running;
+        Phase verdict = anyEmpty ? Phase.FliesWon : SecondsLeft <= 0f ? Phase.HumanWon : Phase.Running;
         if (verdict == Phase.Running)
         {
             return;

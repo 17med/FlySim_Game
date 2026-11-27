@@ -2610,6 +2610,7 @@ MonoBehaviour:
   screenShare: 0.028
   hideBeyond: 600
   hideBehindWalls: 1
+  fliesSeeFliesThroughWalls: 1
   wallLayers:
     serializedVersion: 2
     m_Bits: 4294967295

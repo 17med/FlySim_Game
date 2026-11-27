@@ -115,7 +115,8 @@ public class FoodDishNetwork : NetworkBehaviour
         // A first bite is worth one message's eating; a later one is worth the time since the last,
         // capped, so the elapsed time since a bite ten seconds ago cannot buy ten seconds of eating.
         float window = hasEaten ? Mathf.Min((float)(now - last), MaxBiteWindow) : FlyEating.BiteSendInterval;
-        allowed = Mathf.Min(amount, dish.BiteRate * window * RateTolerance);
+        // The host's own fly count decides the share, so a client cannot eat at the full rate.
+        allowed = Mathf.Min(amount, dish.BiteRate * MatchDirector.BiteShare * window * RateTolerance);
         return allowed > 0f;
     }
 

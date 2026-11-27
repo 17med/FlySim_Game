@@ -21,7 +21,7 @@ public class FoodDish : MonoBehaviour
     // often rather than once at the start.
     const float GuardSearchInterval = 0.5f;
 
-    [Tooltip("Percent of the dish one fly eats per second of holding Interact. 1 clears a full dish in 100 seconds of one fly eating without a break; give every dish in a scene the same rate, so no dish is a free one the human cannot afford to leave. Flies eating together stack, so raise it for a one fly game and lower it for four.")]
+    [Tooltip("Percent of the dish one fly eats per second of holding Interact. The rate of one fly playing alone: 1.1 clears a full dish in about 90 seconds of eating without a break. With more flies each one eats less (MatchDirector.BiteShare), so this one number suits one to four flies. Give every dish in a scene the same rate: emptying any one dish wins, so a faster dish is the one the human can never leave.")]
     [SerializeField, Range(0.05f, 25f)] float biteRate = 0.6f;
 
     [Tooltip("How far from the middle of the dish a fly can eat, as a multiple of the dish's own radius. Taken from the model's bounds, so it follows whatever scale the dish is placed at.")]

@@ -62,10 +62,11 @@ public static class CoffeeCupSetup
     // 1.3 a fly would have to be standing in the coffee to drink it (the mug's radius is under 6 cm,
     // handle included, against a dish you could set it down on).
     const float MugBiteRangeScale = 2.5f;
-    // The same rate as both couscous dishes (1 percent a second, 100 seconds for one fly): a dish that
-    // empties faster than the others is the one the old man can never afford to walk away from, and
-    // one that empties slower is a free one. HouseBuildPipeline sets the couscous to the same number.
-    const float MugBiteRate = 1f;
+    // The same rate as the couscous (1.1 percent a second for one fly alone, about 90 seconds; more
+    // flies each eat a smaller share, see MatchDirector.BiteShare): emptying any one dish wins, so a
+    // dish that empties faster than the others is the one the old man can never walk away from.
+    // HouseBuildPipeline sets the couscous to the same number.
+    const float MugBiteRate = 1.1f;
     // FoodDish measures guarding flat along the floor from the middle of the old man's body, in
     // mug-radii. The mug's radius is under 6 cm, so 15 radii is under 0.9 m: standing at the coffee
     // table guards it, standing across the room does not.

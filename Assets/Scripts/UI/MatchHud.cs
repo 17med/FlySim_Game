@@ -4,8 +4,9 @@ using UnityEngine.UI;
 
 // What the players need to see while the kitchen is being raided: how long is left, how much food is
 // left, and what the key under their finger does.
-// The bar is every dish in the kitchen averaged together, not the couscous alone: there is coffee in
-// the living room too, so the lines below say "the food" rather than naming one of them.
+// The bar is the emptiest dish in the kitchen, not the couscous alone or an average: emptying any one
+// dish wins the match for the flies, so the emptiest is how close they are. It can be either dish,
+// so the lines below say "the food" rather than naming one of them.
 // The HUD lives in each kitchen scene (Tools > Match > Add HUD To Open Scene makes it once), so its
 // texts and bar are placed, sized and coloured by hand in the Editor. This script only fills them in:
 // it never moves anything, so whatever layout the scene has is the layout the players see.
@@ -148,7 +149,7 @@ public class MatchHud : MonoBehaviour
         if (eater == null || eater.Dish == null)
         {
             // The human's job is the whole kitchen, so he is told how his own dish is doing instead.
-            if (GameSession.LocalRole == PlayerRole.Human && match.FoodLeft < 0.35f)
+            if (GameSession.LocalRole == PlayerRole.Human && match.FoodLeft < MatchDirector.FoodDangerShare)
             {
                 stateText.text = "THEY ARE EATING IT";
                 stateText.color = alarmColor;
